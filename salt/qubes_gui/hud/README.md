@@ -10,12 +10,21 @@ window-manager decoration. Applications cannot paint or move that badge. The
 normal window frame remains on the shared black/cyan HUD palette. Picom adds an
 external cyan glow, but Qubes frames and label badges remain fully opaque.
 
+The tiled layout uses a 32-pixel inner gap and permits direct title-bar drag
+and drop. On the current 1920-pixel-wide, 598-mm display, that is approximately
+10 mm; the physical distance varies on displays with a different DPI. Dropping
+near a target edge selects a tiled position, shared borders resize with the
+mouse, and holding Shift before starting a center-drop drag swaps two tiled
+windows.
+
 The root background is exactly black. Picom uses the GLX backend for shadows,
 fades, and blur on the dom0 shell: i3bar, Rofi, and Dunst. The compositor rules
 default every window to full opacity and finish with a defense-in-depth Qubes
 property/class rule that forces compositor opacity to 1 and disables blur for
 VM windows. The HUD launches Picom with its explicit owned config path, so a
 higher-priority personal Picom config cannot replace these safety rules.
+The cyan shadow uses Picom's maximum supported opacity and an intentionally
+oversized 48-pixel radius, so adjacent blooms overlap across the inner gap.
 
 ## Pinned platform
 

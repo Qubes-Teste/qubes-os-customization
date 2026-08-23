@@ -74,9 +74,17 @@ keys are shown in `salt/pillar.example.sls`. The package transport defaults to
 
 The `qubes_gui.hud` state adds the black/cyan shell shown by the visual
 references under `style_guide/`. It installs an exactly black background,
-30-pixel top bar, gaps, sharp frames with an external cyan glow, a translucent
-Rofi launcher, translucent Dunst notifications, and glossy dom0 GTK chrome.
-It deliberately does not style AppVM application content or web pages.
+30-pixel top bar, 32-pixel inner gaps, sharp frames with a maximum-intensity
+48-pixel cyan glow, a translucent Rofi launcher, translucent Dunst
+notifications, and glossy dom0 GTK chrome. On the current 598-mm-wide
+reference display, the gap is approximately 10 mm; its physical size varies
+with display DPI. The HUD deliberately does not style AppVM application
+content or web pages.
+
+Tiled windows can be dragged directly by their title bars. Drop near the top,
+bottom, left, or right edge of another window to choose its tiled position;
+drag a shared border to resize the neighboring tiles. Hold Shift before
+starting the drag, then drop onto the center to swap the two windows.
 
 In the HUD session, `Ctrl+Alt+T` always opens an `xfce4-terminal` in dom0. The
 standard Windows-logo-key plus Enter binding remains context-sensitive and
