@@ -70,4 +70,48 @@ Defaults are defined in `salt/qubes_gui/i3/init.sls`. The supported pillar
 keys are shown in `salt/pillar.example.sls`. The package transport defaults to
 `auto`; use a pillar override only when route-based detection is inappropriate.
 
-The images under `style_guide/` are visual references for later layout work.
+## HUD desktop shell
+
+The `qubes_gui.hud` state adds the dark navy/cyan shell shown by the visual
+references under `style_guide/`. It installs a technical-grid wallpaper,
+30-pixel top bar, gaps, sharp frames, Rofi launcher, Dunst notifications, and
+dom0 GTK chrome. It deliberately does not style AppVM application content or
+web pages.
+
+Qubes label colors remain visible as compact rectangles in the upper-right of
+normal window decorations. They are painted by a pinned, hardened i3 binary in
+dom0 from gui-daemon's trusted label-color property; AppVM content cannot paint
+or reposition them. The rest of each frame stays in the common HUD palette.
+The packaged `/usr/bin/i3`, its login session, and Xfce all remain available as
+fallbacks.
+
+On another Qubes 4.3 machine, apply the base state first and then the HUD:
+
+```sh
+./scripts/sync-salt-formula.sh
+sudo qubesctl state.sls qubes_gui.i3 saltenv=user
+sudo qubesctl state.sls qubes_gui.hud saltenv=user test=True
+sudo qubesctl state.sls qubes_gui.hud saltenv=user
+sudo qubesctl state.sls qubes_gui.hud saltenv=user
+```
+
+The second HUD apply should report zero changes. Log out and choose
+**Qubes HUD (i3)**; the state never restarts the active desktop or LightDM.
+
+The custom binary is accepted only on the exact audited Qubes/Fedora i3 base
+and is verified by SHA-256 before use. Its complete source patch, pinned input
+hashes, build recipe, license, and reproducibility notes are under
+`source/i3-hud/`. See `salt/qubes_gui/hud/README.md` for collision handling and
+the exact platform pins.
+
+To return to packaged i3:
+
+```sh
+sudo qubesctl state.sls qubes_gui.hud.rollback saltenv=user test=True
+sudo qubesctl state.sls qubes_gui.hud.rollback saltenv=user
+```
+
+Real user-triggered fullscreen has no window-manager decoration and therefore
+no corner badge. Qubes' default gui-daemon policy rejects untrusted AppVM
+fullscreen requests; override-redirect windows keep gui-daemon's protected
+label border.

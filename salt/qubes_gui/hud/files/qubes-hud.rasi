@@ -1,0 +1,152 @@
+/* Qubes HUD managed file. Owner: salt/qubes_gui/hud. */
+configuration {
+    modi:                       "drun,run,window";
+    show-icons:                 true;
+    display-drun:               "APPS";
+    display-run:                "CMD";
+    display-window:             "WIN";
+    drun-display-format:        "{name}";
+    disable-history:            false;
+    click-to-exit:              true;
+}
+
+* {
+    hud-bg:                     #030b12;
+    hud-surface:                #06111a;
+    hud-surface-raised:         #081b29;
+    hud-cyan:                   #19d3ff;
+    hud-cyan-muted:             #116b86;
+    hud-text:                   #d9faff;
+    hud-text-muted:             #7bb9c7;
+    hud-alert:                  #ff3b6b;
+
+    background-color:           transparent;
+    text-color:                 @hud-text;
+    font:                       "Noto Sans Mono 10";
+    border-radius:              0px;
+}
+
+window {
+    location:                   center;
+    anchor:                     center;
+    width:                      720px;
+    background-color:           @hud-bg;
+    border:                     2px;
+    border-color:               @hud-cyan;
+    border-radius:              0px;
+    padding:                    3px;
+}
+
+mainbox {
+    background-color:           @hud-bg;
+    border:                     0px;
+    padding:                    12px;
+    spacing:                    10px;
+    children:                   [ inputbar, message, listview ];
+}
+
+inputbar {
+    background-color:           @hud-surface-raised;
+    border:                     0px 0px 2px 0px;
+    border-color:               @hud-cyan-muted;
+    padding:                    10px 12px;
+    spacing:                    10px;
+    children:                   [ prompt, entry, case-indicator ];
+}
+
+prompt {
+    background-color:           @hud-cyan;
+    text-color:                 @hud-bg;
+    padding:                    2px 8px;
+}
+
+entry {
+    background-color:           transparent;
+    text-color:                 @hud-text;
+    placeholder:                "search applications";
+    placeholder-color:          @hud-text-muted;
+    vertical-align:             0.5;
+}
+
+case-indicator {
+    background-color:           transparent;
+    text-color:                 @hud-text-muted;
+}
+
+message {
+    background-color:           @hud-surface;
+    border:                     1px;
+    border-color:               @hud-cyan-muted;
+    padding:                    8px 10px;
+}
+
+textbox {
+    background-color:           transparent;
+    text-color:                 @hud-text-muted;
+}
+
+listview {
+    background-color:           transparent;
+    columns:                    1;
+    lines:                      10;
+    cycle:                      true;
+    dynamic:                    true;
+    scrollbar:                  true;
+    fixed-height:               true;
+    fixed-columns:              true;
+    spacing:                    3px;
+}
+
+scrollbar {
+    background-color:           @hud-surface-raised;
+    handle-color:               @hud-cyan-muted;
+    handle-width:               3px;
+    border:                     0px;
+    width:                      8px;
+}
+
+element {
+    background-color:           transparent;
+    text-color:                 @hud-text-muted;
+    orientation:                horizontal;
+    border:                     0px 0px 0px 2px;
+    border-color:               transparent;
+    padding:                    8px 10px;
+    spacing:                    12px;
+}
+
+element normal.normal,
+element alternate.normal {
+    background-color:           transparent;
+    text-color:                 @hud-text-muted;
+}
+
+element selected.normal,
+element selected.active {
+    background-color:           @hud-surface-raised;
+    text-color:                 @hud-text;
+    border-color:               @hud-cyan;
+}
+
+element normal.active,
+element alternate.active {
+    background-color:           transparent;
+    text-color:                 @hud-cyan;
+}
+
+element selected.urgent {
+    background-color:           @hud-surface-raised;
+    text-color:                 @hud-alert;
+    border-color:               @hud-alert;
+}
+
+element-icon {
+    background-color:           transparent;
+    size:                       24px;
+}
+
+element-text {
+    background-color:           transparent;
+    text-color:                 inherit;
+    vertical-align:             0.5;
+}

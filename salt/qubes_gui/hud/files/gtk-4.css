@@ -1,0 +1,198 @@
+/* Qubes HUD managed file. Owner: salt/qubes_gui/hud.
+ * Dom0 toolkit chrome only; this does not style browser or AppVM content. */
+
+@define-color hud_bg #030b12;
+@define-color hud_surface #06111a;
+@define-color hud_raised #081b29;
+@define-color hud_cyan #19d3ff;
+@define-color hud_cyan_dim #116b86;
+@define-color hud_text #d9faff;
+@define-color hud_text_dim #7bb9c7;
+@define-color hud_alert #ff3b6b;
+
+window,
+window.background,
+dialog {
+  background-color: @hud_bg;
+  color: @hud_text;
+}
+
+headerbar,
+.titlebar,
+toolbar,
+menubar {
+  background-color: @hud_surface;
+  background-image: none;
+  color: @hud_text;
+  border-color: @hud_cyan_dim;
+  border-radius: 0;
+  box-shadow: none;
+  text-shadow: none;
+}
+
+headerbar,
+.titlebar {
+  border-width: 0 0 2px;
+  border-style: solid;
+  padding: 3px 6px;
+}
+
+toolbar,
+menubar {
+  border-width: 0 0 1px;
+  border-style: solid;
+}
+
+popover > contents,
+popover.menu > contents,
+.context-menu {
+  background-color: @hud_surface;
+  color: @hud_text;
+  border: 1px solid @hud_cyan_dim;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+popover modelbutton {
+  min-height: 22px;
+  padding: 5px 10px;
+  color: @hud_text_dim;
+  border-radius: 0;
+}
+
+popover modelbutton:hover,
+popover modelbutton:focus {
+  background-color: @hud_raised;
+  color: @hud_text;
+  box-shadow: inset 2px 0 @hud_cyan;
+}
+
+button {
+  min-height: 24px;
+  padding: 4px 10px;
+  background-color: @hud_raised;
+  background-image: none;
+  color: @hud_text;
+  border: 1px solid @hud_cyan_dim;
+  border-radius: 0;
+  box-shadow: none;
+  text-shadow: none;
+}
+
+button:hover,
+button:focus {
+  background-color: shade(@hud_raised, 1.18);
+  border-color: @hud_cyan;
+  color: @hud_text;
+}
+
+button:active,
+button:checked {
+  background-color: @hud_cyan_dim;
+  border-color: @hud_cyan;
+  color: #ffffff;
+}
+
+button:disabled {
+  background-color: @hud_surface;
+  border-color: shade(@hud_cyan_dim, 0.65);
+  color: shade(@hud_text_dim, 0.65);
+}
+
+entry,
+spinbutton,
+dropdown > button {
+  background-color: @hud_bg;
+  background-image: none;
+  color: @hud_text;
+  border: 1px solid @hud_cyan_dim;
+  border-radius: 0;
+  box-shadow: none;
+  caret-color: @hud_cyan;
+}
+
+entry:focus,
+spinbutton:focus,
+dropdown > button:focus {
+  border-color: @hud_cyan;
+  box-shadow: inset 0 -1px @hud_cyan;
+}
+
+notebook,
+notebook > stack,
+.view,
+columnview,
+listview,
+textview text {
+  background-color: @hud_bg;
+  color: @hud_text;
+}
+
+notebook > header {
+  background-color: @hud_surface;
+  border-color: @hud_cyan_dim;
+}
+
+notebook > header > tabs > tab {
+  min-height: 26px;
+  padding: 4px 10px;
+  background-color: @hud_surface;
+  color: @hud_text_dim;
+  border-radius: 0;
+}
+
+notebook > header > tabs > tab:checked {
+  background-color: @hud_raised;
+  color: @hud_text;
+  box-shadow: inset 0 -2px @hud_cyan;
+}
+
+row:hover,
+row:selected,
+.view:selected {
+  background-color: @hud_cyan_dim;
+  color: #ffffff;
+}
+
+scrollbar {
+  background-color: @hud_bg;
+}
+
+scrollbar slider {
+  min-width: 7px;
+  min-height: 7px;
+  background-color: @hud_cyan_dim;
+  border: 0;
+  border-radius: 0;
+}
+
+scrollbar slider:hover {
+  background-color: @hud_cyan;
+}
+
+tooltip,
+tooltip.background {
+  background-color: @hud_raised;
+  color: @hud_text;
+  border: 1px solid @hud_cyan;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+infobar {
+  background-color: @hud_raised;
+  color: @hud_text;
+  border-bottom: 1px solid @hud_cyan_dim;
+}
+
+.error,
+.destructive-action {
+  border-color: @hud_alert;
+}
+
+*:focus-visible {
+  outline-color: @hud_cyan;
+  outline-style: solid;
+  outline-width: 1px;
+  outline-offset: -2px;
+}

@@ -1,0 +1,10 @@
+# Managed by qubes-os-customization Salt formula. Local changes are overwritten.
+[Desktop Entry]
+Name=Qubes HUD (i3)
+Comment=Qubes trusted HUD session using the pinned i3 build
+Exec=/usr/local/libexec/qubes-hud/i3
+TryExec=/usr/local/libexec/qubes-hud/i3
+Type=XSession
+X-LightDM-DesktopName=qubes-hud
+DesktopNames=i3
+Keywords=qubes;tiling;hud;i3;windowmanager;

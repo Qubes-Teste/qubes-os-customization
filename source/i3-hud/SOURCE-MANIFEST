@@ -1,0 +1,12 @@
+# Qubes HUD trusted i3 source manifest
+i3_version=4.25.1
+i3_url=https://i3wm.org/downloads/i3-4.25.1.tar.xz
+i3_sha512=10d44f7efcfb23089edf5ec9783ddd3b9dca5592f4d5b101ec7158cd75ec73d917e3025250968c1c8e2d44c64d749855000a07b16059c582c1e80b1220ac7c81
+qubes_i3_repository=https://github.com/QubesOS/qubes-desktop-linux-i3.git
+qubes_i3_commit=40bb085eec2b17b49bd18e3fb9315b575a9c53cc
+qubes_i3_patch=0001-Show-qubes-domain-in-configurable-colored-borders.patch
+qubes_i3_patch_sha256=8dadd57d223d3df5df313807b7abb89c384ca313bb028e3a41b73ffe39766461
+i3_hud_patch=0002-qubes-hud-trusted-label-badge.patch
+i3_hud_patch_sha256=fd9bf77fb3630c502ec7a01f46422bedecc0f232029073b2f5ade7944956f690
+source_date_epoch=1770581259
+i3_hud_x86_64_sha256=9f044f081661e1b3ef04ee2ef58be07d8044b083a2282c38918bde9792051e7c
