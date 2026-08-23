@@ -2,3 +2,7 @@
 # Keep Qubes' packaged integration, retain physical key positions across
 # keyboard layouts, and avoid the interactive i3-config-wizard.
 include /etc/i3/config.keycodes
+
+# Ctrl+Alt+T always starts a terminal locally in dom0. Physical keycode 28 is
+# T on the supported German and US keyboard layouts.
+bindcode Control+Mod1+28 exec --no-startup-id /usr/bin/xfce4-terminal

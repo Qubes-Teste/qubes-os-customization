@@ -42,6 +42,11 @@ The `qubes-hud.rasi` source is installed as `~/.config/rofi/config.rasi`, so
 the standard `rofi -show drun` binding loads it without an extra command-line
 flag.
 
+Terminal shortcuts retain Qubes' context-sensitive behavior while adding an
+unambiguous trusted path: `Ctrl+Alt+T` always starts `xfce4-terminal` locally
+in dom0. The key with the Windows logo plus Enter keeps Qubes' standard
+context-sensitive behavior and opens a terminal in the focused qube.
+
 Except for binary assets, every managed source must contain a recognized text
 ownership marker. Formula/session files use
 `Managed by qubes-os-customization Salt formula`; the Rofi, Dunst, and GTK

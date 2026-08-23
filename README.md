@@ -14,7 +14,7 @@ The formula:
 - automatically uses direct DNF when dom0 has a direct IPv4 default route;
 - otherwise uses Qubes' native Salt package provider and UpdateVM path;
 - manages a deterministic user config without running `i3-config-wizard`;
-- uses the Super key (`Mod4`) as the i3 modifier;
+- uses the Windows-logo key (`Mod4`) as the i3 modifier;
 - makes i3 the default for the next LightDM login without restarting the
   active graphical session;
 - leaves the Xfce session and all Xfce packages intact.
@@ -48,10 +48,10 @@ Xfce remains available from the session chooser.
 
 Useful initial bindings:
 
-- `Super+Enter`: terminal in the focused qube
-- `Super+d`: application launcher
-- `Super+Shift+d`: Qubes application menu
-- `Super+Shift+e`: exit i3 and return to LightDM
+- `Windows-logo key+Enter`: terminal in the focused qube
+- `Windows-logo key+D`: application launcher
+- `Windows-logo key+Shift+D`: Qubes application menu
+- `Windows-logo key+Shift+E`: exit i3 and return to LightDM
 
 ### Roll back to Xfce
 
@@ -77,6 +77,10 @@ references under `style_guide/`. It installs a technical-grid wallpaper,
 30-pixel top bar, gaps, sharp frames, Rofi launcher, Dunst notifications, and
 dom0 GTK chrome. It deliberately does not style AppVM application content or
 web pages.
+
+In the HUD session, `Ctrl+Alt+T` always opens an `xfce4-terminal` in dom0. The
+standard Windows-logo-key plus Enter binding remains context-sensitive and
+opens a terminal in the currently focused qube.
 
 Qubes label colors remain visible as compact rectangles in the upper-right of
 normal window decorations. They are painted by a pinned, hardened i3 binary in

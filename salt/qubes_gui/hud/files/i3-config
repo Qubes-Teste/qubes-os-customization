@@ -23,6 +23,7 @@ set $audio_mic_mute pactl set-source-mute @DEFAULT_SOURCE@ toggle
 
 set $terminal qubes-i3-sensible-terminal
 set $console qubes-i3-sensible-terminal console
+set $dom0_terminal /usr/bin/xfce4-terminal
 
 set $desktop_autostart qubes-i3-xdg-autostart
 ## VARS END ##
@@ -112,6 +113,10 @@ floating_modifier $mod
 # Start a terminal in the domain of the currently active window.
 bindcode $mod+36 exec $terminal
 bindcode $mod+Shift+36 exec $console
+
+# Always start a trusted dom0 terminal, regardless of the focused qube.
+# Physical keycode 28 is T on the supported German and US keyboard layouts.
+bindcode Control+Mod1+28 exec --no-startup-id $dom0_terminal
 
 # Kill focused window.
 bindcode $mod+Shift+24 kill
