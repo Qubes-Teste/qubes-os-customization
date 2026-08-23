@@ -1,0 +1,4 @@
+# Managed by qubes-os-customization Salt formula.
+# Keep Qubes' packaged integration, retain physical key positions across
+# keyboard layouts, and avoid the interactive i3-config-wizard.
+include /etc/i3/config.keycodes
