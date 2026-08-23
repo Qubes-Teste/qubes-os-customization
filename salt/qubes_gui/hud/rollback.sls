@@ -26,6 +26,7 @@
 {% set keyboard_helper = '/usr/local/libexec/qubes-hud/apply-keyboard-layout' %}
 {% set hud_autostart_helper = '/usr/local/libexec/qubes-hud/hud-xdg-autostart' %}
 {% set picom_config = '/usr/local/libexec/qubes-hud/picom.conf' %}
+{% set window_shader = '/usr/local/libexec/qubes-hud/window-glass.glsl' %}
 {% set legacy_picom_config = '/etc/xdg/picom.conf' %}
 {% set picom_package_owner = '/usr/local/libexec/qubes-hud/picom.package-owner' %}
 {% set hud_wallpaper = '/usr/share/backgrounds/qubes-hud.png' %}
@@ -64,6 +65,7 @@
     (keyboard_helper, [owner_marker]),
     (hud_autostart_helper, [owner_marker]),
     (picom_config, [owner_marker, hud_asset_marker]),
+    (window_shader, [hud_asset_marker]),
     (picom_package_owner, [owner_marker]),
     (hud_wallpaper_owner, [owner_marker])
 ] %}
@@ -260,6 +262,12 @@ qubes_gui_hud_rollback_remove_picom_config:
     - require:
       - cmd: qubes_gui_hud_rollback_accountsservice_session
 
+qubes_gui_hud_rollback_remove_window_shader:
+  file.absent:
+    - name: {{ window_shader }}
+    - require:
+      - file: qubes_gui_hud_rollback_remove_picom_config
+
 {% if legacy_picom_owned %}
 qubes_gui_hud_rollback_remove_owned_legacy_picom_config:
   file.absent:
@@ -275,6 +283,7 @@ qubes_gui_hud_rollback_remove_owned_picom_package:
     - require:
       - file: qubes_gui_hud_rollback_remove_autostart_helper
       - file: qubes_gui_hud_rollback_remove_picom_config
+      - file: qubes_gui_hud_rollback_remove_window_shader
 {% if legacy_picom_owned %}
       - file: qubes_gui_hud_rollback_remove_owned_legacy_picom_config
 {% endif %}

@@ -7,7 +7,7 @@ readonly QUBES_I3_COMMIT="40bb085eec2b17b49bd18e3fb9315b575a9c53cc"
 readonly SOURCE_DATE_EPOCH_VALUE="1770581259"
 readonly I3_TARBALL_SHA512="10d44f7efcfb23089edf5ec9783ddd3b9dca5592f4d5b101ec7158cd75ec73d917e3025250968c1c8e2d44c64d749855000a07b16059c582c1e80b1220ac7c81"
 readonly QUBES_PATCH_SHA256="8dadd57d223d3df5df313807b7abb89c384ca313bb028e3a41b73ffe39766461"
-readonly HUD_PATCH_SHA256="fd9bf77fb3630c502ec7a01f46422bedecc0f232029073b2f5ade7944956f690"
+readonly HUD_PATCH_SHA256="f0a45e0f487a8731cfceb71b7713fc29fdd3cf21a9cb23ffa2f184d2626c1226"
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(CDPATH= cd -- "${script_dir}/../.." && pwd)"

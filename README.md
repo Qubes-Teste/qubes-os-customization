@@ -74,9 +74,9 @@ keys are shown in `salt/pillar.example.sls`. The package transport defaults to
 
 The `qubes_gui.hud` state adds the black/cyan shell shown by the visual
 references under `style_guide/`. It installs an exactly black background,
-30-pixel top bar, 32-pixel inner gaps, sharp frames with a maximum-intensity
-48-pixel cyan glow, a translucent Rofi launcher, translucent Dunst
-notifications, and glossy dom0 GTK chrome. On the current 598-mm-wide
+30-pixel top bar, 32-pixel inner gaps, 16-pixel rounded frames with a
+maximum-intensity 48-pixel cyan glow, a translucent Rofi launcher, translucent
+Dunst notifications, and glossy dom0 GTK chrome. On the current 598-mm-wide
 reference display, the gap is approximately 10 mm; its physical size varies
 with display DPI. The HUD deliberately does not style AppVM application
 content or web pages.
@@ -90,12 +90,17 @@ In the HUD session, `Ctrl+Alt+T` always opens an `xfce4-terminal` in dom0. The
 standard Windows-logo-key plus Enter binding remains context-sensitive and
 opens a terminal in the currently focused qube.
 
-Qubes label colors remain visible as compact rectangles in the upper-right of
-normal window decorations. They are painted by a pinned, hardened i3 binary in
-dom0 from gui-daemon's trusted label-color property; AppVM content cannot paint
-or reposition them. The Qubes frame and label rectangle stay fully opaque;
-Picom adds only an external glow to VM windows. The packaged `/usr/bin/i3`, its
-login session, and Xfce all remain available as fallbacks.
+Qubes label colors remain visible as thin horizontal lines in normal window
+decorations. Each line starts just after the rendered title, fades from nearly
+transparent there to full label intensity at the right, carries a restrained
+same-color halo, and automatically resizes with the window. It is painted by a
+pinned, hardened i3 binary in dom0
+from gui-daemon's trusted label-color property; AppVM content cannot paint or
+reposition it. Picom intentionally composites each non-fullscreen window,
+including its Qubes frame and label line, at 30% transparency (70% opacity)
+with background blur, an external cyan halo, and an edge-weighted inner rim
+that fades toward the center. Fullscreen windows remain opaque. The packaged
+`/usr/bin/i3`, its login session, and Xfce all remain available as fallbacks.
 
 At HUD startup, the keyboard helper first restores the desktop user's saved
 Xfce layout, variant, model, and keyboard options and otherwise falls back to
@@ -130,6 +135,6 @@ sudo qubesctl state.sls qubes_gui.hud.rollback saltenv=user
 ```
 
 Real user-triggered fullscreen has no window-manager decoration and therefore
-no corner badge. Qubes' default gui-daemon policy rejects untrusted AppVM
+no label line. Qubes' default gui-daemon policy rejects untrusted AppVM
 fullscreen requests; override-redirect windows keep gui-daemon's protected
 label border.

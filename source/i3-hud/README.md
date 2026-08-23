@@ -5,16 +5,22 @@ separate `i3-hud` executable deployed by the HUD Salt state. It does not replace
 Fedora's `/usr/bin/i3`; the `qubes-hud` login session explicitly launches the
 separate binary, so the packaged Qubes i3 session remains a fallback.
 
-The patch keeps the frame in the dark navy/cyan HUD palette and draws a compact
-Qubes label-color rectangle at the top right of every normal decoration. The
-rectangle is painted by i3 in dom0 from gui-daemon's trusted
+The patch keeps the frame in the dark navy/cyan HUD palette and draws a thin,
+rounded Qubes label-color line in every normal decoration. The line begins
+after the rendered title, fades from 4% label intensity there to 100% at the
+right, and carries a restrained two-layer halo in the same trusted color. Its
+geometry is recalculated from the current decoration after every resize. A
+minimum segment is reserved so a long application title cannot hide the trust
+cue. The line is painted by i3 in dom0 from gui-daemon's trusted
 `_QUBES_LABEL_COLOR` property. It is not an application overlay and cannot be
 painted by AppVM content. The existing `[qube-name]` prefix is retained.
+The trusted decoration also gives that prefix a 10-logical-pixel left inset so
+Picom's rounded window corner cannot clip its first glyph.
 
 For compatibility with older gui-daemon versions, a strictly parsed legacy
 label index selects a built-in canonical color. `BS_PIXEL` windows retain a
 label-colored whole-border cue. A real trusted-user fullscreen or `BS_NONE`
-window has no decoration and therefore no badge. Qubes' default gui-daemon
+window has no decoration and therefore no label line. Qubes' default gui-daemon
 policy rejects untrusted fullscreen requests, and the HUD config forces normal
 decorations for managed application windows.
 

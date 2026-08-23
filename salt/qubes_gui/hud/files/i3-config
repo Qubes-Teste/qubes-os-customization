@@ -42,7 +42,7 @@ bindsym XF86AudioMute exec --no-startup-id $audio_mute
 bindsym XF86AudioMicMute exec --no-startup-id $audio_mic_mute
 
 # Trusted HUD frame palette. All frames remain navy/cyan; only the indicator
-# slot carries the canonical Qubes label color used as a badge fallback by the
+# slot carries the canonical Qubes label color used as a line fallback by the
 # trusted, patched i3 binary.
 # class/state                label   border   background text     indicator child-border
 client.focused               dom0    #19d3ff  #071b29    #d9faff  #f5f5f5  #19d3ff

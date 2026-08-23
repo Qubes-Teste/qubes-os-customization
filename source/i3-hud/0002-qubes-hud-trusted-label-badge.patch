@@ -1,6 +1,8 @@
+diff --git a/include/data.h b/include/data.h
+index 3d4ae23..9649858 100644
 --- a/include/data.h
 +++ b/include/data.h
-@@ -237,6 +237,9 @@
+@@ -237,6 +237,9 @@ struct width_height {
   */
  struct deco_render_params {
      struct Colortriple *color;
@@ -10,7 +12,7 @@
      int border_style;
      struct width_height con_rect;
      struct width_height con_window_rect;
-@@ -464,6 +467,10 @@
+@@ -464,6 +467,10 @@ struct Window {
      /** The qubes label. */
      int qubes_label;
  
@@ -21,17 +23,21 @@
      /** The WM_WINDOW_ROLE of this window (for example, the pidgin buddy window
       * sets "buddy list"). Useful to match specific windows in assignments or
       * for_window. */
+diff --git a/include/i3-atoms_rest.xmacro.h b/include/i3-atoms_rest.xmacro.h
+index cd6f801..3e9f0ac 100644
 --- a/include/i3-atoms_rest.xmacro.h
 +++ b/include/i3-atoms_rest.xmacro.h
-@@ -24,4 +24,5 @@
+@@ -24,4 +24,5 @@ xmacro(_MOTIF_WM_HINTS) \
  xmacro(WM_CHANGE_STATE) \
  xmacro(_QUBES_VMNAME) \
  xmacro(_QUBES_LABEL) \
 +xmacro(_QUBES_LABEL_COLOR) \
  xmacro(MANAGER)
+diff --git a/include/window.h b/include/window.h
+index 24591be..d54b6e9 100644
 --- a/include/window.h
 +++ b/include/window.h
-@@ -54,6 +54,11 @@
+@@ -54,6 +54,11 @@ void window_update_qubes_vmname(i3Window *win, xcb_get_property_reply_t *prop, b
   */
  void window_update_qubes_label(i3Window *win, xcb_get_property_reply_t *prop, bool before_mgmt);
  
@@ -43,9 +49,11 @@
  
  /**
   * Updates the CLIENT_LEADER (logical parent window).
+diff --git a/src/handlers.c b/src/handlers.c
+index 384005b..d1073d6 100644
 --- a/src/handlers.c
 +++ b/src/handlers.c
-@@ -1311,6 +1311,24 @@
+@@ -1311,6 +1311,24 @@ static bool handle_windowicon_change(Con *con, xcb_get_property_reply_t *prop) {
      return true;
  }
  
@@ -70,7 +78,7 @@
  /* Returns false if the event could not be processed (e.g. the window could not
   * be found), true otherwise */
  typedef bool (*cb_property_handler_t)(Con *con, xcb_get_property_reply_t *property);
-@@ -1334,7 +1352,10 @@
+@@ -1334,7 +1352,10 @@ static struct property_handler_t property_handlers[] = {
      {0, UINT_MAX, handle_window_type},
      {0, 128, handle_machine_change},
      {0, 5 * sizeof(uint64_t), handle_motif_hints_change},
@@ -82,7 +90,7 @@
  #define NUM_HANDLERS (sizeof(property_handlers) / sizeof(struct property_handler_t))
  
  /*
-@@ -1358,6 +1379,9 @@
+@@ -1358,6 +1379,9 @@ void property_handlers_init(void) {
      property_handlers[10].atom = XCB_ATOM_WM_CLIENT_MACHINE;
      property_handlers[11].atom = A__MOTIF_WM_HINTS;
      property_handlers[12].atom = A__NET_WM_ICON;
@@ -92,9 +100,11 @@
  }
  
  static void property_notify(uint8_t state, xcb_window_t window, xcb_atom_t atom) {
+diff --git a/src/manage.c b/src/manage.c
+index 3de5f03..7babb68 100644
 --- a/src/manage.c
 +++ b/src/manage.c
-@@ -114,6 +114,7 @@
+@@ -114,6 +114,7 @@ void manage_window(xcb_window_t window, xcb_get_window_attributes_cookie_t cooki
  
      xcb_get_property_cookie_t wm_type_cookie, strut_cookie, state_cookie,
          utf8_title_cookie, title_cookie, qubes_vmname_cookie, qubes_label_cookie,
@@ -102,7 +112,7 @@
          class_cookie, leader_cookie, transient_cookie,
          role_cookie, startup_id_cookie, wm_hints_cookie,
          wm_normal_hints_cookie, motif_wm_hints_cookie, wm_user_time_cookie, wm_desktop_cookie,
-@@ -182,7 +183,8 @@
+@@ -182,7 +183,8 @@ void manage_window(xcb_window_t window, xcb_get_window_attributes_cookie_t cooki
      state_cookie = GET_PROPERTY(A__NET_WM_STATE, UINT32_MAX);
      utf8_title_cookie = GET_PROPERTY(A__NET_WM_NAME, 128);
      qubes_vmname_cookie = GET_PROPERTY(A__QUBES_VMNAME, 128);
@@ -112,7 +122,7 @@
      leader_cookie = GET_PROPERTY(A_WM_CLIENT_LEADER, UINT32_MAX);
      transient_cookie = GET_PROPERTY(XCB_ATOM_WM_TRANSIENT_FOR, UINT32_MAX);
      title_cookie = GET_PROPERTY(XCB_ATOM_WM_NAME, 128);
-@@ -212,6 +214,7 @@
+@@ -212,6 +214,7 @@ void manage_window(xcb_window_t window, xcb_get_window_attributes_cookie_t cooki
      window_update_icon(cwindow, xcb_get_property_reply(conn, wm_icon_cookie, NULL));
      window_update_qubes_vmname(cwindow, xcb_get_property_reply(conn, qubes_vmname_cookie, NULL), true);
      window_update_qubes_label(cwindow, xcb_get_property_reply(conn, qubes_label_cookie, NULL), true);
@@ -120,9 +130,11 @@
      window_update_leader(cwindow, xcb_get_property_reply(conn, leader_cookie, NULL));
      window_update_transient_for(cwindow, xcb_get_property_reply(conn, transient_cookie, NULL));
      window_update_strut_partial(cwindow, xcb_get_property_reply(conn, strut_cookie, NULL));
+diff --git a/src/window.c b/src/window.c
+index 7de74aa..3751759 100644
 --- a/src/window.c
 +++ b/src/window.c
-@@ -21,6 +21,7 @@
+@@ -21,6 +21,7 @@ void window_free(i3Window *win) {
      FREE(win->role);
      FREE(win->machine);
      i3string_free(win->name);
@@ -130,7 +142,7 @@
      cairo_surface_destroy(win->icon);
      FREE(win->ran_assignments);
      FREE(win);
-@@ -137,13 +138,21 @@
+@@ -137,13 +138,21 @@ void window_update_name_legacy(i3Window *win, xcb_get_property_reply_t *prop) {
  }
  
  /*
@@ -155,7 +167,7 @@
          FREE(prop);
          return;
      }
-@@ -151,10 +160,10 @@
+@@ -151,10 +160,10 @@ void window_update_qubes_vmname(i3Window *win, xcb_get_property_reply_t *prop, b
      i3string_free(win->qubes_vmname);
  
      /* Truncate the name at the first zero byte. See i3 #3515. */
@@ -168,7 +180,7 @@
  
      LOG("_QUBES_VMNAME set to \"%s\"\n", i3string_as_utf8(win->qubes_vmname));
  
-@@ -174,13 +183,17 @@
+@@ -174,13 +183,17 @@ void window_update_qubes_vmname(i3Window *win, xcb_get_property_reply_t *prop, b
   *
   */
  void window_update_qubes_label(i3Window *win, xcb_get_property_reply_t *prop, bool before_mgmt) {
@@ -188,7 +200,7 @@
  
      if (before_mgmt) {
          free(prop);
-@@ -192,6 +205,35 @@
+@@ -192,6 +205,35 @@ void window_update_qubes_label(i3Window *win, xcb_get_property_reply_t *prop, bo
      free(prop);
  }
  
@@ -224,9 +236,11 @@
  
  /*
   * Updates the CLIENT_LEADER (logical parent window).
+diff --git a/src/x.c b/src/x.c
+index 9d24f2a..24ccb3a 100644
 --- a/src/x.c
 +++ b/src/x.c
-@@ -27,6 +27,21 @@
+@@ -27,6 +27,68 @@ static xcb_window_t last_focused = XCB_NONE;
  /* Stores coordinates to warp mouse pointer to if set */
  static Rect *warp_to;
  
@@ -245,10 +259,57 @@
 +    [QUBE_BLACK] = 0x000000,
 +};
 +
++/* Draw a trusted label-colored line over the already-painted title bar. Two
++ * low-opacity strokes form a restrained halo beneath the solid core. All three
++ * fade toward the title while retaining the full label color at the right. */
++static void draw_qubes_label_line(surface_t *surface, color_t color,
++                                  int x, int y, int width, int line_height,
++                                  int decoration_height) {
++    if (surface->id == XCB_NONE || width <= 0 || line_height <= 0 ||
++        decoration_height <= 0) {
++        return;
++    }
++
++    const double line_width = min(width, line_height);
++    const double start_x = x + (line_width / 2.0);
++    const double end_x = x + width - (line_width / 2.0);
++    const double center_y = y + (line_height / 2.0);
++    const double requested_widths[] = {
++        logical_px(9), logical_px(5), line_width};
++    const double opacity_multipliers[] = {0.08, 0.16, 1.0};
++    const size_t stroke_count = sizeof(requested_widths) / sizeof(requested_widths[0]);
++
++    cairo_save(surface->cr);
++    cairo_set_operator(surface->cr, CAIRO_OPERATOR_OVER);
++    cairo_set_line_cap(surface->cr, CAIRO_LINE_CAP_ROUND);
++    for (size_t i = 0; i < stroke_count; i++) {
++        const double stroke_width = min((double)width,
++                                        min((double)decoration_height,
++                                            requested_widths[i]));
++        cairo_pattern_t *gradient = cairo_pattern_create_linear(start_x, center_y,
++                                                                 end_x, center_y);
++        cairo_pattern_set_extend(gradient, CAIRO_EXTEND_PAD);
++        cairo_pattern_add_color_stop_rgba(gradient, 0.0,
++                                          color.red, color.green, color.blue,
++                                          color.alpha * 0.04 * opacity_multipliers[i]);
++        cairo_pattern_add_color_stop_rgba(gradient, 1.0,
++                                          color.red, color.green, color.blue,
++                                          color.alpha * opacity_multipliers[i]);
++        cairo_set_source(surface->cr, gradient);
++        cairo_set_line_width(surface->cr, stroke_width);
++        cairo_move_to(surface->cr, start_x, center_y);
++        cairo_line_to(surface->cr, end_x, center_y);
++        cairo_stroke(surface->cr);
++        cairo_pattern_destroy(gradient);
++    }
++    CAIRO_SURFACE_FLUSH(surface->surface);
++    cairo_restore(surface->cr);
++}
++
  /*
   * Describes the X11 state we may modify (map state, position, window stack).
   * There is one entry per container. The state represents the current situation
-@@ -389,11 +404,14 @@
+@@ -389,11 +451,14 @@ static void x_draw_decoration_after_title(Con *con, struct deco_render_params *p
          /* We actually only redraw the far right two pixels as that is the
           * distance we keep from the edge (not the entire border width).
           * Redrawing the entire border would cause text to be cut off. */
@@ -268,13 +329,13 @@
      }
  
      /* Redraw the border. */
-@@ -503,20 +521,27 @@
+@@ -503,20 +568,27 @@ void x_draw_decoration(Con *con) {
      }
  
  
 -    /* find out which colors to use */
 +    /* The frame is a uniform trusted dom0 HUD surface. The qube's trust color
-+     * is rendered separately as a badge from _QUBES_LABEL_COLOR below. */
++     * is rendered separately as a line from _QUBES_LABEL_COLOR below. */
      if (con->urgent) {
 -        p->color = &config.client[label].urgent;
 +        p->color = &config.client[QUBE_DOM0].urgent;
@@ -303,24 +364,24 @@
      }
  
      p->border_style = con_border_style(con);
-@@ -556,6 +581,16 @@
+@@ -556,6 +628,16 @@ void x_draw_decoration(Con *con) {
      con->pixmap_recreated = false;
      con->mark_changed = false;
  
-+    /* Resolve the trusted badge color only after the decoration cache says a
++    /* Resolve the trusted label color only after the decoration cache says a
 +     * redraw is necessary. The indexed canonical map is the compatibility
 +     * fallback for dom0 and older gui-daemon versions. */
-+    const uint32_t badge_rgb = p->qubes_label_color_valid
++    const uint32_t label_rgb = p->qubes_label_color_valid
 +                                   ? p->qubes_label_color
 +                                   : qubes_label_fallback_rgb[p->qubes_label];
-+    char badge_hex[8];
-+    snprintf(badge_hex, sizeof(badge_hex), "#%06x", badge_rgb);
-+    color_t qubes_label_color = draw_util_hex_to_color(badge_hex);
++    char label_hex[8];
++    snprintf(label_hex, sizeof(label_hex), "#%06x", label_rgb);
++    color_t qubes_label_color = draw_util_hex_to_color(label_hex);
 +
      /* 2: draw the client.background, but only for the parts around the window_rect */
      if (con->window != NULL) {
          /* Clear visible windows before beginning to draw */
-@@ -582,8 +617,11 @@
+@@ -582,8 +664,11 @@ void x_draw_decoration(Con *con) {
           * to "shine through". */
          xcb_rectangle_t rectangles[4];
          size_t rectangles_count = x_get_border_rectangles(con, rectangles);
@@ -333,47 +394,26 @@
                                  rectangles[i].x,
                                  rectangles[i].y,
                                  rectangles[i].width,
-@@ -651,6 +689,34 @@
-     const int deco_width = (int)con->deco_rect.width;
-     const int title_padding = logical_px(2);
+@@ -649,7 +734,13 @@ void x_draw_decoration(Con *con) {
+     int text_offset_y = (con->deco_rect.height - config.font.height) / 2;
  
-+    /* Draw the trusted Qubes label as a compact badge in the top-right of the
-+     * dom0-owned decoration. Reserve its width so titles and marks cannot
-+     * overlap it. Very small tab decorations get a proportionally smaller
-+     * badge while keeping at least one visible color block. */
-+    int badge_space = 0;
-+    int badge_x = 0;
-+    int badge_y = 0;
-+    int badge_width = 0;
-+    int badge_height = 0;
-+    int badge_outline = 0;
-+    bool draw_qubes_badge = false;
-+    if (win != NULL && deco_width > 0 && con->deco_rect.height > 0) {
-+        const int deco_height = con->deco_rect.height;
-+        const int badge_margin_x = min(logical_px(4), max(0, (deco_width - 1) / 2));
-+        const int badge_margin_y = min(logical_px(4), max(0, (deco_height - 1) / 2));
-+        badge_height = max(1, deco_height - (2 * badge_margin_y));
-+        const int badge_available_width = max(1, deco_width - (2 * badge_margin_x));
-+        badge_width = min(badge_available_width,
-+                          min(logical_px(42), max(badge_height * 2, deco_width / 12)));
-+        badge_space = badge_width + (2 * badge_margin_x);
-+        badge_x = con->deco_rect.x + deco_width - badge_width - badge_margin_x;
-+        badge_y = con->deco_rect.y + badge_margin_y;
-+        badge_outline = min(logical_px(1), min(badge_margin_x, badge_margin_y));
-+        draw_qubes_badge = true;
-+    }
+     const int deco_width = (int)con->deco_rect.width;
+-    const int title_padding = logical_px(2);
++    const int title_padding = logical_px(10);
 +
-+    const int content_width = max(0, deco_width - badge_space);
-+
++    /* Keep a small trusted-label area available even when a title is long.
++     * It shrinks proportionally for narrow tab decorations. */
++    const int label_line_reserve = min(logical_px(40), max(0, deco_width / 3));
++    const int content_width = max(0, deco_width - label_line_reserve);
++    int decoration_content_right = title_padding;
+ 
      int mark_width = 0;
      if (config.show_marks && !TAILQ_EMPTY(&(con->marks_head))) {
-         char *formatted_mark = sstrdup("");
-@@ -672,18 +738,22 @@
+@@ -672,18 +763,24 @@ void x_draw_decoration(Con *con) {
          if (had_visible_mark) {
              i3String *mark = i3string_from_utf8(formatted_mark);
              mark_width = predict_text_width(mark);
-+            const int mark_available_width = max(0, content_width - 2 * title_padding);
- 
+-
 -            int mark_offset_x = (config.title_align == ALIGN_RIGHT)
 -                                    ? title_padding
 -                                    : deco_width - mark_width - title_padding;
@@ -382,6 +422,8 @@
 -                           p->color->text, p->color->background,
 -                           con->deco_rect.x + mark_offset_x,
 -                           con->deco_rect.y + text_offset_y, mark_width);
++            const int mark_available_width = max(0, content_width - 2 * title_padding);
++
 +            if (mark_width <= mark_available_width) {
 +                int mark_offset_x = (config.title_align == ALIGN_RIGHT)
 +                                        ? title_padding
@@ -391,6 +433,8 @@
 +                               p->color->text, p->color->background,
 +                               con->deco_rect.x + mark_offset_x,
 +                               con->deco_rect.y + text_offset_y, mark_width);
++                decoration_content_right = max(decoration_content_right,
++                                               mark_offset_x + mark_width);
 +                mark_width += title_padding;
 +            } else {
 +                mark_width = 0;
@@ -401,7 +445,7 @@
          }
  
          FREE(formatted_mark);
-@@ -707,7 +777,7 @@
+@@ -707,7 +804,7 @@ void x_draw_decoration(Con *con) {
          title = con->title_format == NULL ? win->name : con_parse_title_format(con);
      }
      if (title == NULL) {
@@ -410,7 +454,7 @@
      }
  
      /* Set Qubes window title only when the container has a title and contains
-@@ -727,7 +797,10 @@
+@@ -727,7 +824,10 @@ void x_draw_decoration(Con *con) {
      int icon_size = max(0, con->deco_rect.height - logical_px(2));
      int icon_padding = logical_px(max(1, con->window_icon_padding));
      int total_icon_space = icon_size + 2 * icon_padding;
@@ -422,7 +466,7 @@
      if (!has_icon) {
          icon_size = icon_padding = total_icon_space = 0;
      }
-@@ -751,27 +824,30 @@
+@@ -751,27 +851,33 @@ void x_draw_decoration(Con *con) {
               * by two the total available area. That's the decoration width
               * minus the elements that come after icon_offset_x (icon, its
               * padding, text, marks). */
@@ -457,29 +501,43 @@
 +                       con->deco_rect.x + title_offset_x,
 +                       con->deco_rect.y + text_offset_y,
 +                       title_width);
++        decoration_content_right = max(decoration_content_right,
++                                       title_offset_x + min(predict_text_width(title),
++                                                            title_width));
 +    }
      if (has_icon) {
          draw_util_image(
              win->icon,
-@@ -784,7 +860,22 @@
+@@ -780,11 +886,33 @@ void x_draw_decoration(Con *con) {
+             con->deco_rect.y + logical_px(1),
+             icon_size,
+             icon_size);
++        decoration_content_right = max(decoration_content_right,
++                                       icon_offset_x + icon_size);
+     }
  
      I3STRING_FREE(title);
  
 +draw_decoration_overlays:
      x_draw_decoration_after_title(con, p, dest_surface);
 +
-+    /* Paint the trusted badge last. XCB bitmap fonts do not honor the maximum
-+     * text width, so reserving space alone cannot prevent a title or mark from
-+     * overwriting the label cue. Repainting here makes the badge authoritative
-+     * for every font backend and also covers containers without a title. */
-+    if (draw_qubes_badge) {
-+        if (badge_outline > 0) {
-+            draw_util_rectangle(dest_surface, p->color->border,
-+                                badge_x - badge_outline, badge_y - badge_outline,
-+                                badge_width + (2 * badge_outline), badge_height + (2 * badge_outline));
-+        }
-+        draw_util_rectangle(dest_surface, qubes_label_color,
-+                            badge_x, badge_y, badge_width, badge_height);
++    /* Paint the trusted cue last so applications cannot cover it. Its geometry
++     * is derived from the current decoration width and therefore follows every
++     * resize. The transparent end begins after all rendered title content. */
++    if (win != NULL && deco_width > 0 && con->deco_rect.height > 0) {
++        const int line_gap = logical_px(8);
++        const int line_margin_right = min(logical_px(4), max(0, deco_width / 2));
++        const int line_start = con->deco_rect.x +
++                               min(deco_width, decoration_content_right + line_gap);
++        const int line_end = con->deco_rect.x + deco_width - line_margin_right;
++        const int line_height = min(max(1, logical_px(3)),
++                                    (int)con->deco_rect.height);
++        const int line_y = con->deco_rect.y +
++                           ((int)con->deco_rect.height - line_height) / 2;
++        draw_qubes_label_line(dest_surface, qubes_label_color,
++                              line_start, line_y,
++                              max(0, line_end - line_start), line_height,
++                              (int)con->deco_rect.height);
 +    }
  copy_pixmaps:
      draw_util_copy_surface(&(con->frame_buffer), &(con->frame), 0, 0, 0, 0, con->rect.width, con->rect.height);

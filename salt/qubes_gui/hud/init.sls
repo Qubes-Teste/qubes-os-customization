@@ -7,7 +7,7 @@
 {% set desktop_home = user_info.get('home', '/home/' ~ desktop_user) if user_info else '/home/' ~ desktop_user %}
 {% set owner_marker = 'Managed by qubes-os-customization Salt formula' %}
 {% set hud_asset_marker = 'Qubes HUD managed file. Owner: salt/qubes_gui/hud.' %}
-{% set i3_hud_sha256 = '9f044f081661e1b3ef04ee2ef58be07d8044b083a2282c38918bde9792051e7c' %}
+{% set i3_hud_sha256 = '2dec876a423d73d3ab08912cc0487a0cd23a2112546a903a8467010b2d561721' %}
 {% set expected_i3_evr = '1000:4.25.1-1.fc41.x86_64' %}
 {% set expected_i3_settings_evr = '1.14-1.fc41' %}
 {% set release = grains.get('osrelease', '')|string %}
@@ -39,6 +39,7 @@
 {% set keyboard_helper = '/usr/local/libexec/qubes-hud/apply-keyboard-layout' %}
 {% set hud_autostart_helper = '/usr/local/libexec/qubes-hud/hud-xdg-autostart' %}
 {% set picom_config = '/usr/local/libexec/qubes-hud/picom.conf' %}
+{% set window_shader = '/usr/local/libexec/qubes-hud/window-glass.glsl' %}
 {% set legacy_picom_config = '/etc/xdg/picom.conf' %}
 {% set picom_package_owner = '/usr/local/libexec/qubes-hud/picom.package-owner' %}
 {% set hud_wallpaper = '/usr/share/backgrounds/qubes-hud.png' %}
@@ -85,6 +86,7 @@
     (keyboard_helper, [owner_marker]),
     (hud_autostart_helper, [owner_marker]),
     (picom_config, [owner_marker, hud_asset_marker]),
+    (window_shader, [hud_asset_marker]),
     (picom_package_owner, [owner_marker]),
     (hud_wallpaper_owner, [owner_marker])
 ] %}
@@ -237,6 +239,17 @@ qubes_gui_hud_keyboard_helper:
     - require:
       - file: qubes_gui_hud_binary_directory
 
+qubes_gui_hud_window_shader:
+  file.managed:
+    - name: {{ window_shader }}
+    - source: salt://qubes_gui/hud/files/window-glass.glsl
+    - user: root
+    - group: root
+    - mode: '0644'
+    - backup: minion
+    - require:
+      - file: qubes_gui_hud_binary_directory
+
 qubes_gui_hud_picom_config:
   file.managed:
     - name: {{ picom_config }}
@@ -247,6 +260,7 @@ qubes_gui_hud_picom_config:
     - backup: minion
     - require:
       - file: qubes_gui_hud_binary_directory
+      - file: qubes_gui_hud_window_shader
 {% if transport == 'direct-dom0' %}
       - cmd: qubes_gui_hud_runtime_packages_direct
 {% else %}

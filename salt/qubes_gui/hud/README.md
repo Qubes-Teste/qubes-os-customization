@@ -5,24 +5,33 @@ replace `/usr/bin/i3`, remove the packaged i3 session, restart LightDM, or
 reload the currently running i3 process. The selected session takes effect at
 the next logout/login.
 
-The custom i3 binary draws the Qubes label-color rectangle inside the trusted
-window-manager decoration. Applications cannot paint or move that badge. The
-normal window frame remains on the shared black/cyan HUD palette. Picom adds an
-external cyan glow, but Qubes frames and label badges remain fully opaque.
+The custom i3 binary draws a three-logical-pixel Qubes label-color line inside
+the trusted window-manager decoration. It begins after the rendered title,
+fades from 4% to 100% label intensity toward the right, has a subtle
+label-colored two-layer halo, and recalculates its length whenever the window
+changes size. Applications cannot paint or move the line. The normal window
+frame remains on the shared black/cyan HUD palette.
+Picom adds an external cyan halo and an edge-weighted inner rim that fades
+toward the center. Universal glass intentionally composites each
+non-fullscreen application, including its Qubes frame and label line, at 30%
+transparency (70% opacity). Fullscreen windows remain fully opaque.
 
 The tiled layout uses a 32-pixel inner gap and permits direct title-bar drag
 and drop. On the current 1920-pixel-wide, 598-mm display, that is approximately
 10 mm; the physical distance varies on displays with a different DPI. Dropping
 near a target edge selects a tiled position, shared borders resize with the
 mouse, and holding Shift before starting a center-drop drag swaps two tiled
-windows.
+windows. The trusted window-manager decoration gives titles enough left inset
+to keep their first glyph clear of the rounded top-left corner.
 
 The root background is exactly black. Picom uses the GLX backend for shadows,
-fades, and blur on the dom0 shell: i3bar, Rofi, and Dunst. The compositor rules
-default every window to full opacity and finish with a defense-in-depth Qubes
-property/class rule that forces compositor opacity to 1 and disables blur for
-VM windows. The HUD launches Picom with its explicit owned config path, so a
-higher-priority personal Picom config cannot replace these safety rules.
+fades, and blur on the dom0 shell and all non-fullscreen application windows.
+The baseline remains fully opaque, so docks, override-redirect surfaces, and
+fullscreen applications do not inherit universal glass. A final Qubes
+property/class rule retains the no-fade, always-composited policy without
+overriding the non-fullscreen glass rule or its 16-pixel rounded corners. The
+HUD launches Picom with its explicit owned config path, so a higher-priority
+personal Picom config cannot replace these rules.
 The cyan shadow uses Picom's maximum supported opacity and an intentionally
 oversized 48-pixel radius, so adjacent blooms overlap across the inner gap.
 
@@ -51,6 +60,7 @@ The state expects these sources under `qubes_gui/hud/files/`:
 - `apply-keyboard-layout`
 - `hud-xdg-autostart`
 - `picom.conf`
+- `window-glass.glsl`
 - `qubes-hud.desktop`
 - `qubes-hud-wallpaper.png`
 - `qubes-hud.rasi`
@@ -83,9 +93,10 @@ context-sensitive behavior and opens a terminal in the focused qube.
 Except for binary assets, every managed source must contain a recognized text
 ownership marker. Formula/session files use
 `Managed by qubes-os-customization Salt formula`; the Rofi, Dunst, and GTK
-assets use `Qubes HUD managed file. Owner: salt/qubes_gui/hud.`. Binary
-ownership is recorded by adjacent `.owner` files created only after the
-corresponding asset has been installed successfully.
+assets, Picom config, and window shader use
+`Qubes HUD managed file. Owner: salt/qubes_gui/hud.`. Binary ownership is
+recorded by adjacent `.owner` files created only after the corresponding asset
+has been installed successfully.
 
 ## Collision safety
 
@@ -93,10 +104,10 @@ The state checks every destination with `lstat` and refuses as a whole when a
 target is a symbolic link, directory, FIFO, device, socket, other non-regular
 inode, or a regular file lacking the ownership marker. This deliberately
 protects an existing i3 config, Rofi theme, Dunst config, GTK CSS, Picom
-config, helper, LightDM override, or XSession from silent adoption. It also
-ensures rollback can never recursively remove an unexpected directory. For
-the i3 binary and wallpaper, a pre-existing regular file is accepted only
-when its adjacent ownership record carries the marker.
+config, window shader, helper, LightDM override, or XSession from silent
+adoption. It also ensures rollback can never recursively remove an unexpected
+directory. For the i3 binary and wallpaper, a pre-existing regular file is
+accepted only when its adjacent ownership record carries the marker.
 
 If a collision is intentional, move or merge that file manually and run the
 dry run again. There is no force-overwrite pillar.
@@ -136,8 +147,9 @@ sudo qubesctl state.sls qubes_gui.hud.rollback saltenv=user
 
 Rollback selects the packaged `i3` session for the next login, restores the
 include-only `~/.config/i3/config`, and removes only owner-marked HUD files,
-the HUD XSession, wallpaper, helpers, Picom config, and custom binary. It
-removes Picom only when the HUD's package-ownership record proves that the
-formula installed it; otherwise Picom is left untouched. It leaves `rofi`,
-`feh`, and all packaged Qubes/i3 components installed. If any target is no
-longer an owner-marked regular file, rollback refuses before making changes.
+the HUD XSession, wallpaper, helpers, Picom config and shader, and custom
+binary. It removes Picom only when the HUD's package-ownership record proves
+that the formula installed it; otherwise Picom is left untouched. It leaves
+`rofi`, `feh`, and all packaged Qubes/i3 components installed. If any target is
+no longer an owner-marked regular file, rollback refuses before making
+changes.
