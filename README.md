@@ -72,11 +72,11 @@ keys are shown in `salt/pillar.example.sls`. The package transport defaults to
 
 ## HUD desktop shell
 
-The `qubes_gui.hud` state adds the dark navy/cyan shell shown by the visual
-references under `style_guide/`. It installs a technical-grid wallpaper,
-30-pixel top bar, gaps, sharp frames, Rofi launcher, Dunst notifications, and
-dom0 GTK chrome. It deliberately does not style AppVM application content or
-web pages.
+The `qubes_gui.hud` state adds the black/cyan shell shown by the visual
+references under `style_guide/`. It installs an exactly black background,
+30-pixel top bar, gaps, sharp frames with an external cyan glow, a translucent
+Rofi launcher, translucent Dunst notifications, and glossy dom0 GTK chrome.
+It deliberately does not style AppVM application content or web pages.
 
 In the HUD session, `Ctrl+Alt+T` always opens an `xfce4-terminal` in dom0. The
 standard Windows-logo-key plus Enter binding remains context-sensitive and
@@ -85,9 +85,15 @@ opens a terminal in the currently focused qube.
 Qubes label colors remain visible as compact rectangles in the upper-right of
 normal window decorations. They are painted by a pinned, hardened i3 binary in
 dom0 from gui-daemon's trusted label-color property; AppVM content cannot paint
-or reposition them. The rest of each frame stays in the common HUD palette.
-The packaged `/usr/bin/i3`, its login session, and Xfce all remain available as
-fallbacks.
+or reposition them. The Qubes frame and label rectangle stay fully opaque;
+Picom adds only an external glow to VM windows. The packaged `/usr/bin/i3`, its
+login session, and Xfce all remain available as fallbacks.
+
+At HUD startup, the keyboard helper first restores the desktop user's saved
+Xfce layout, variant, model, and keyboard options and otherwise falls back to
+the machine's complete system X11 tuple. No language is hardcoded in the
+portable state, so this machine uses its saved German layout while another
+machine keeps its own configured layout.
 
 On another Qubes 4.3 machine, apply the base state first and then the HUD:
 

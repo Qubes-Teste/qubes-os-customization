@@ -11,9 +11,15 @@ configuration {
 }
 
 * {
+    hud-root:                   #000000;
     hud-bg:                     #030b12;
     hud-surface:                #06111a;
     hud-surface-raised:         #081b29;
+    hud-glass:                  #030b12f0;
+    hud-glass-raised:           #071b29e8;
+    hud-glass-deep:             #000000f7;
+    hud-sheen:                  #d9faff24;
+    hud-cyan-wash:              #19d3ff33;
     hud-cyan:                   #19d3ff;
     hud-cyan-muted:             #116b86;
     hud-text:                   #d9faff;
@@ -30,7 +36,9 @@ window {
     location:                   center;
     anchor:                     center;
     width:                      720px;
-    background-color:           @hud-bg;
+    transparency:               "real";
+    background-color:           @hud-glass;
+    background-image:           linear-gradient(to bottom, #d9faff24, #071b29ee, #030b12f0, #000000f7);
     border:                     2px;
     border-color:               @hud-cyan;
     border-radius:              0px;
@@ -38,7 +46,7 @@ window {
 }
 
 mainbox {
-    background-color:           @hud-bg;
+    background-color:           #00000052;
     border:                     0px;
     padding:                    12px;
     spacing:                    10px;
@@ -46,9 +54,10 @@ mainbox {
 }
 
 inputbar {
-    background-color:           @hud-surface-raised;
-    border:                     0px 0px 2px 0px;
-    border-color:               @hud-cyan-muted;
+    background-color:           @hud-glass-raised;
+    background-image:           linear-gradient(to bottom, #d9faff1f, #071b29e8, #030b12e8);
+    border:                     0px 0px 1px 0px;
+    border-color:               @hud-cyan;
     padding:                    10px 12px;
     spacing:                    10px;
     children:                   [ prompt, entry, case-indicator ];
@@ -74,7 +83,8 @@ case-indicator {
 }
 
 message {
-    background-color:           @hud-surface;
+    background-color:           #06111ae8;
+    background-image:           linear-gradient(to bottom, #19d3ff17, #06111ae8, #030b12e8);
     border:                     1px;
     border-color:               @hud-cyan-muted;
     padding:                    8px 10px;
@@ -98,7 +108,7 @@ listview {
 }
 
 scrollbar {
-    background-color:           @hud-surface-raised;
+    background-color:           #071b29cc;
     handle-color:               @hud-cyan-muted;
     handle-width:               3px;
     border:                     0px;
@@ -123,7 +133,8 @@ element alternate.normal {
 
 element selected.normal,
 element selected.active {
-    background-color:           @hud-surface-raised;
+    background-color:           #071b29e0;
+    background-image:           linear-gradient(to right, #19d3ff33, #071b29e8, #030b1200);
     text-color:                 @hud-text;
     border-color:               @hud-cyan;
 }
@@ -135,7 +146,8 @@ element alternate.active {
 }
 
 element selected.urgent {
-    background-color:           @hud-surface-raised;
+    background-color:           #190914f2;
+    background-image:           linear-gradient(to right, #ff3b6b38, #190914f2, #030b1200);
     text-color:                 @hud-alert;
     border-color:               @hud-alert;
 }

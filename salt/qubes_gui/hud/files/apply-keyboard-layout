@@ -1,0 +1,213 @@
+#!/usr/bin/bash
+# Managed by qubes-os-customization Salt formula. Local changes are overwritten.
+
+set -euo pipefail
+
+if [[ -z ${DISPLAY:-} ]]; then
+    printf '%s\n' 'Qubes HUD keyboard setup requires an X11 DISPLAY.' >&2
+    exit 1
+fi
+
+xfconf_values() {
+    local property=$1 destination_name=$2 output query_status expected
+    local marker=$'\034'
+    local -a lines
+    local -n destination=$destination_name
+
+    destination=()
+    [[ -x /usr/bin/xfconf-query ]] || return 1
+
+    # The sentinel keeps command substitution from discarding trailing newlines.
+    # That matters for empty strings and empty elements in an Xfconf array.
+    if ! output=$(
+        LC_ALL=C /usr/bin/xfconf-query \
+            --channel keyboard-layout \
+            --property "$property" 2>/dev/null
+        query_status=$?
+        /usr/bin/printf '\034'
+        exit "$query_status"
+    ); then
+        return 1
+    fi
+    [[ $output == *"$marker" ]] || return 1
+    output=${output%"$marker"}
+
+    mapfile -t lines < <(/usr/bin/printf '%s' "$output")
+    if (( ${#lines[@]} >= 2 )) \
+        && [[ ${lines[0]} =~ ^Value\ is\ an\ array\ with\ ([0-9]+)\ items:$ ]]; then
+        expected=${BASH_REMATCH[1]}
+        [[ ${lines[1]} == '' ]] || return 1
+        destination=("${lines[@]:2}")
+
+        # mapfile preserves empty array items, including a final empty item.
+        # Still use Xfconf's declared count to reject ambiguous multiline data.
+        (( ${#destination[@]} == 10#$expected )) || return 1
+    else
+        # xfconf-query prints one record-terminating newline for a scalar. Remove
+        # exactly that newline while preserving whitespace inside the value.
+        if [[ $output == *$'\n' ]]; then
+            output=${output%$'\n'}
+        fi
+        destination=("$output")
+    fi
+}
+
+join_with_commas() {
+    local source_name=$1 destination_name=$2
+    local -n source=$source_name
+    local -n destination=$destination_name
+    local IFS=,
+
+    destination="${source[*]}"
+}
+
+status_field() {
+    local wanted=$1 status=$2
+
+    /usr/bin/awk -F: -v wanted="$wanted" '
+        {
+            key = $1
+            sub(/^[[:space:]]+/, "", key)
+            sub(/[[:space:]]+$/, "", key)
+            if (key == wanted) {
+                value = $0
+                sub(/^[^:]*:[[:space:]]*/, "", value)
+                sub(/[[:space:]]+$/, "", value)
+                if (value == "n/a" || value == "(unset)") {
+                    value = ""
+                }
+                print value
+                exit
+            }
+        }
+    ' <<<"$status"
+}
+
+apply_xfce_layout() {
+    local layout variant= model= server_status current_options option
+    local group_present=false compose_present=false flat_options_present=false
+    local -a disabled_values layout_values variant_values model_values
+    local -a group_values compose_values flat_option_values current_option_values
+    local -a options args
+
+    xfconf_values /Default/XkbDisable disabled_values || return 1
+    (( ${#disabled_values[@]} == 1 )) || return 1
+    [[ ${disabled_values[0]} == false ]] || return 1
+
+    xfconf_values /Default/XkbLayout layout_values || return 1
+    join_with_commas layout_values layout
+    [[ -n $layout ]] || return 1
+
+    args=(-layout "$layout")
+
+    if xfconf_values /Default/XkbVariant variant_values; then
+        join_with_commas variant_values variant
+        # An empty variant is meaningful: it selects the layout's default
+        # variant instead of inheriting the current X server variant.
+        args+=(-variant "$variant")
+    fi
+
+    if xfconf_values /Default/XkbModel model_values; then
+        join_with_commas model_values model
+        if [[ -n $model ]]; then
+            args+=(-model "$model")
+        fi
+    fi
+
+    if xfconf_values /Default/XkbOptions flat_option_values; then
+        flat_options_present=true
+    fi
+    if xfconf_values /Default/XkbOptions/Group group_values; then
+        group_present=true
+    fi
+    if xfconf_values /Default/XkbOptions/Compose compose_values; then
+        compose_present=true
+    fi
+
+    if [[ $group_present == true || $compose_present == true ]]; then
+        # Xfce stores its two native choices as child string properties. Match
+        # xfsettingsd: replace only grp:/compose: and retain unrelated options.
+        server_status=$(LC_ALL=C /usr/bin/setxkbmap -query 2>/dev/null) || return 1
+        current_options=$(status_field options "$server_status")
+        if [[ -n $current_options ]]; then
+            IFS=',' read -r -a current_option_values <<<"$current_options"
+        fi
+
+        for option in "${current_option_values[@]}"; do
+            if [[ $group_present == true && $option == grp:* ]]; then
+                continue
+            fi
+            if [[ $compose_present == true && $option == compose:* ]]; then
+                continue
+            fi
+            [[ -n $option ]] && options+=("$option")
+        done
+        if [[ $group_present == true ]]; then
+            for option in "${group_values[@]}"; do
+                [[ -n $option ]] && options+=("$option")
+            done
+        fi
+        if [[ $compose_present == true ]]; then
+            for option in "${compose_values[@]}"; do
+                [[ -n $option ]] && options+=("$option")
+            done
+        fi
+
+        args+=(-option '')
+        for option in "${options[@]}"; do
+            args+=(-option "$option")
+        done
+    elif [[ $flat_options_present == true ]]; then
+        # Also accept the flat scalar/array form used by some imported Xfconf
+        # profiles. Each element remains one quoted setxkbmap option value.
+        args+=(-option '')
+        for option in "${flat_option_values[@]}"; do
+            [[ -n $option ]] && args+=(-option "$option")
+        done
+    fi
+
+    /usr/bin/setxkbmap "${args[@]}"
+}
+
+localectl_field() {
+    status_field "$1" "$localectl_status"
+}
+
+apply_system_layout() {
+    local layout model variant options
+    local -a args
+
+    layout=$(localectl_field 'X11 Layout')
+    model=$(localectl_field 'X11 Model')
+    variant=$(localectl_field 'X11 Variant')
+    options=$(localectl_field 'X11 Options')
+
+    if [[ -z $layout ]]; then
+        printf '%s\n' 'No system X11 keyboard layout is configured.' >&2
+        exit 1
+    fi
+
+    args=(-layout "$layout" -variant "$variant")
+    if [[ -n $model ]]; then
+        args+=(-model "$model")
+    fi
+
+    # Clear inherited options, then apply the system tuple exactly.
+    args+=(-option '')
+    if [[ -n $options ]]; then
+        args+=(-option "$options")
+    fi
+
+    exec /usr/bin/setxkbmap "${args[@]}"
+}
+
+if apply_xfce_layout; then
+    exit 0
+fi
+
+if ! localectl_status=$(LC_ALL=C /usr/bin/localectl status --no-pager 2>/dev/null); then
+    printf '%s\n' 'Unable to read the system X11 keyboard configuration.' >&2
+    exit 1
+fi
+
+apply_system_layout

@@ -7,7 +7,15 @@ the next logout/login.
 
 The custom i3 binary draws the Qubes label-color rectangle inside the trusted
 window-manager decoration. Applications cannot paint or move that badge. The
-normal window frame remains on the shared navy/cyan HUD palette.
+normal window frame remains on the shared black/cyan HUD palette. Picom adds an
+external cyan glow, but Qubes frames and label badges remain fully opaque.
+
+The root background is exactly black. Picom uses the GLX backend for shadows,
+fades, and blur on the dom0 shell: i3bar, Rofi, and Dunst. The compositor rules
+default every window to full opacity and finish with a defense-in-depth Qubes
+property/class rule that forces compositor opacity to 1 and disables blur for
+VM windows. The HUD launches Picom with its explicit owned config path, so a
+higher-priority personal Picom config cannot replace these safety rules.
 
 ## Pinned platform
 
@@ -31,6 +39,9 @@ The state expects these sources under `qubes_gui/hud/files/`:
 
 - `i3-hud`
 - `i3-config`
+- `apply-keyboard-layout`
+- `hud-xdg-autostart`
+- `picom.conf`
 - `qubes-hud.desktop`
 - `qubes-hud-wallpaper.png`
 - `qubes-hud.rasi`
@@ -41,6 +52,19 @@ The state expects these sources under `qubes_gui/hud/files/`:
 The `qubes-hud.rasi` source is installed as `~/.config/rofi/config.rasi`, so
 the standard `rofi -show drun` binding loads it without an extra command-line
 flag.
+
+On each HUD login, `apply-keyboard-layout` first uses the desktop user's saved,
+enabled Xfce keyboard layout, variant, optional model, and Group/Compose or
+flat XKB options. If that preference is unavailable or incomplete, it applies
+the machine's complete system X11 tuple from `localectl`. The helper never
+hardcodes a country or language.
+
+`hud-xdg-autostart` starts `/usr/bin/picom` synchronously with
+`/usr/local/libexec/qubes-hud/picom.conf`, then runs the normal Qubes system and
+user XDG autostart entries while filtering any bare `picom.desktop` entry. This
+keeps the HUD session on its explicit config and prevents a second,
+unconfigured Picom instance inside that session. Picom's packaged XDG entry is
+left untouched for other desktop sessions.
 
 Terminal shortcuts retain Qubes' context-sensitive behavior while adding an
 unambiguous trusted path: `Ctrl+Alt+T` always starts `xfce4-terminal` locally
@@ -56,11 +80,14 @@ corresponding asset has been installed successfully.
 
 ## Collision safety
 
-The state refuses as a whole when a destination is a symbolic link or an
-existing destination lacks the ownership marker. This deliberately protects
-an existing i3 config, Rofi theme, Dunst config, GTK CSS, LightDM override, or
-XSession from silent adoption. For the i3 binary and wallpaper, a pre-existing
-file is accepted only when its adjacent ownership record carries the marker.
+The state checks every destination with `lstat` and refuses as a whole when a
+target is a symbolic link, directory, FIFO, device, socket, other non-regular
+inode, or a regular file lacking the ownership marker. This deliberately
+protects an existing i3 config, Rofi theme, Dunst config, GTK CSS, Picom
+config, helper, LightDM override, or XSession from silent adoption. It also
+ensures rollback can never recursively remove an unexpected directory. For
+the i3 binary and wallpaper, a pre-existing regular file is accepted only
+when its adjacent ownership record carries the marker.
 
 If a collision is intentional, move or merge that file manually and run the
 dry run again. There is no force-overwrite pillar.
@@ -80,8 +107,10 @@ sudo qubesctl state.sls qubes_gui.hud saltenv=user
 
 Package transport defaults to `auto`: a dom0 default IPv4 route selects direct
 DNF, otherwise the normal Qubes UpdateVM-backed `pkg.installed` path is used.
-Only the runtime packages `rofi` and `feh` are installed. Supported pillar
-keys are `qubes_gui:hud:desktop_user`, `desktop_group`, and
+Only the runtime packages `rofi`, `feh`, and `picom` are installed. If Picom
+was absent, the state records that it owns the package so rollback can remove
+it; a Picom package that predates the HUD is never claimed or removed.
+Supported pillar keys are `qubes_gui:hud:desktop_user`, `desktop_group`, and
 `package_transport` (`auto`, `direct-dom0`, or `qubes-updatevm`).
 
 Log out normally and select **Qubes HUD (i3)** if LightDM does not select it
@@ -98,6 +127,8 @@ sudo qubesctl state.sls qubes_gui.hud.rollback saltenv=user
 
 Rollback selects the packaged `i3` session for the next login, restores the
 include-only `~/.config/i3/config`, and removes only owner-marked HUD files,
-the HUD XSession, wallpaper, and custom binary. It leaves `rofi`, `feh`, and
-all packaged Qubes/i3 components installed. If an owned target has lost its
-marker or become a symlink, rollback refuses before making changes.
+the HUD XSession, wallpaper, helpers, Picom config, and custom binary. It
+removes Picom only when the HUD's package-ownership record proves that the
+formula installed it; otherwise Picom is left untouched. It leaves `rofi`,
+`feh`, and all packaged Qubes/i3 components installed. If any target is no
+longer an owner-marked regular file, rollback refuses before making changes.

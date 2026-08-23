@@ -1,9 +1,14 @@
 /* Qubes HUD managed file. Owner: salt/qubes_gui/hud.
  * Dom0 toolkit chrome only; this does not style browser or AppVM content. */
 
-@define-color hud_bg #030b12;
+@define-color hud_root #000000;
+@define-color hud_bg #02070c;
 @define-color hud_surface #06111a;
 @define-color hud_raised #081b29;
+@define-color hud_glass rgba(3, 11, 18, 0.94);
+@define-color hud_glass_raised rgba(7, 27, 41, 0.91);
+@define-color hud_sheen rgba(217, 250, 255, 0.16);
+@define-color hud_cyan_wash rgba(25, 211, 255, 0.14);
 @define-color hud_cyan #19d3ff;
 @define-color hud_cyan_dim #116b86;
 @define-color hud_text #d9faff;
@@ -22,12 +27,17 @@ headerbar,
 toolbar,
 .toolbar,
 menubar {
-  background-color: @hud_surface;
-  background-image: none;
+  background-color: @hud_glass;
+  background-image: linear-gradient(to bottom,
+                                    @hud_sheen 0%,
+                                    rgba(7, 27, 41, 0.93) 9%,
+                                    rgba(3, 11, 18, 0.95) 45%,
+                                    rgba(0, 0, 0, 0.97) 100%);
   color: @hud_text;
   border-color: @hud_cyan_dim;
   border-radius: 0;
-  box-shadow: none;
+  box-shadow: inset 0 1px rgba(217, 250, 255, 0.20),
+              inset 0 -1px rgba(25, 211, 255, 0.22);
   text-shadow: none;
 }
 
@@ -50,11 +60,15 @@ menu,
 popover,
 .popover,
 .context-menu {
-  background-color: @hud_surface;
+  background-color: @hud_glass;
+  background-image: linear-gradient(to bottom,
+                                    rgba(25, 211, 255, 0.10) 0%,
+                                    rgba(3, 11, 18, 0.94) 18%,
+                                    rgba(0, 0, 0, 0.96) 100%);
   color: @hud_text;
   border: 1px solid @hud_cyan_dim;
   border-radius: 0;
-  box-shadow: none;
+  box-shadow: inset 0 1px rgba(217, 250, 255, 0.15);
 }
 
 menuitem,
@@ -69,7 +83,11 @@ menuitem:hover,
 menuitem:focus,
 modelbutton:hover,
 modelbutton:focus {
-  background-color: @hud_raised;
+  background-color: @hud_glass_raised;
+  background-image: linear-gradient(to right,
+                                    @hud_cyan_wash 0%,
+                                    rgba(7, 27, 41, 0.92) 38%,
+                                    rgba(3, 11, 18, 0) 100%);
   color: @hud_text;
   box-shadow: inset 2px 0 @hud_cyan;
 }
@@ -78,12 +96,15 @@ button,
 .button {
   min-height: 24px;
   padding: 4px 10px;
-  background-color: @hud_raised;
-  background-image: none;
+  background-color: @hud_glass_raised;
+  background-image: linear-gradient(to bottom,
+                                    rgba(217, 250, 255, 0.14) 0%,
+                                    rgba(7, 27, 41, 0.90) 22%,
+                                    rgba(3, 11, 18, 0.94) 100%);
   color: @hud_text;
   border: 1px solid @hud_cyan_dim;
   border-radius: 0;
-  box-shadow: none;
+  box-shadow: inset 0 1px rgba(217, 250, 255, 0.12);
   text-shadow: none;
 }
 
@@ -91,7 +112,11 @@ button:hover,
 button:focus,
 .button:hover,
 .button:focus {
-  background-color: shade(@hud_raised, 1.18);
+  background-color: rgba(8, 36, 52, 0.94);
+  background-image: linear-gradient(to bottom,
+                                    rgba(217, 250, 255, 0.20) 0%,
+                                    rgba(8, 36, 52, 0.93) 28%,
+                                    rgba(3, 11, 18, 0.95) 100%);
   border-color: @hud_cyan;
   color: @hud_text;
 }
@@ -115,8 +140,11 @@ button:disabled,
 entry,
 spinbutton,
 combobox button {
-  background-color: @hud_bg;
-  background-image: none;
+  background-color: rgba(0, 0, 0, 0.88);
+  background-image: linear-gradient(to bottom,
+                                    rgba(25, 211, 255, 0.07) 0%,
+                                    rgba(0, 0, 0, 0.88) 28%,
+                                    rgba(2, 7, 12, 0.94) 100%);
   color: @hud_text;
   border: 1px solid @hud_cyan_dim;
   border-radius: 0;
@@ -141,20 +169,32 @@ textview text {
 }
 
 notebook > header {
-  background-color: @hud_surface;
+  background-color: @hud_glass;
+  background-image: linear-gradient(to bottom,
+                                    rgba(217, 250, 255, 0.10) 0%,
+                                    rgba(3, 11, 18, 0.94) 22%,
+                                    rgba(0, 0, 0, 0.96) 100%);
   border-color: @hud_cyan_dim;
 }
 
 notebook > header > tabs > tab {
   min-height: 26px;
   padding: 4px 10px;
-  background-color: @hud_surface;
+  background-color: rgba(6, 17, 26, 0.88);
+  background-image: linear-gradient(to bottom,
+                                    rgba(217, 250, 255, 0.08) 0%,
+                                    rgba(6, 17, 26, 0.88) 32%,
+                                    rgba(0, 0, 0, 0.92) 100%);
   color: @hud_text_dim;
   border-radius: 0;
 }
 
 notebook > header > tabs > tab:checked {
-  background-color: @hud_raised;
+  background-color: @hud_glass_raised;
+  background-image: linear-gradient(to bottom,
+                                    rgba(25, 211, 255, 0.16) 0%,
+                                    rgba(7, 27, 41, 0.92) 35%,
+                                    rgba(3, 11, 18, 0.95) 100%);
   color: @hud_text;
   box-shadow: inset 0 -2px @hud_cyan;
 }
@@ -168,7 +208,7 @@ selection {
 }
 
 scrollbar {
-  background-color: @hud_bg;
+  background-color: rgba(0, 0, 0, 0.82);
 }
 
 scrollbar slider {
@@ -185,7 +225,11 @@ scrollbar slider:hover {
 
 tooltip,
 tooltip.background {
-  background-color: @hud_raised;
+  background-color: @hud_glass_raised;
+  background-image: linear-gradient(to bottom,
+                                    rgba(217, 250, 255, 0.14) 0%,
+                                    rgba(7, 27, 41, 0.92) 24%,
+                                    rgba(0, 0, 0, 0.95) 100%);
   color: @hud_text;
   border: 1px solid @hud_cyan;
   border-radius: 0;
@@ -197,7 +241,11 @@ infobar,
 .question,
 .warning,
 .error {
-  background-color: @hud_raised;
+  background-color: @hud_glass_raised;
+  background-image: linear-gradient(to bottom,
+                                    rgba(25, 211, 255, 0.10) 0%,
+                                    rgba(7, 27, 41, 0.91) 28%,
+                                    rgba(3, 11, 18, 0.95) 100%);
   color: @hud_text;
   border-bottom: 1px solid @hud_cyan_dim;
 }

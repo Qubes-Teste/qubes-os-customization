@@ -23,64 +23,99 @@
 {% set hud_xsession = '/usr/share/xsessions/qubes-hud.desktop' %}
 {% set hud_binary = '/usr/local/libexec/qubes-hud/i3' %}
 {% set hud_binary_owner = '/usr/local/libexec/qubes-hud/i3.owner' %}
+{% set keyboard_helper = '/usr/local/libexec/qubes-hud/apply-keyboard-layout' %}
+{% set hud_autostart_helper = '/usr/local/libexec/qubes-hud/hud-xdg-autostart' %}
+{% set picom_config = '/usr/local/libexec/qubes-hud/picom.conf' %}
+{% set legacy_picom_config = '/etc/xdg/picom.conf' %}
+{% set picom_package_owner = '/usr/local/libexec/qubes-hud/picom.package-owner' %}
 {% set hud_wallpaper = '/usr/share/backgrounds/qubes-hud.png' %}
 {% set hud_wallpaper_owner = '/usr/share/backgrounds/qubes-hud.png.owner' %}
 
-{% set i3_exists = salt['file.file_exists'](user_i3_config) %}
-{% set rofi_exists = salt['file.file_exists'](user_rofi_theme) %}
-{% set dunst_exists = salt['file.file_exists'](user_dunst_config) %}
-{% set gtk3_exists = salt['file.file_exists'](user_gtk3_css) %}
-{% set gtk4_exists = salt['file.file_exists'](user_gtk4_css) %}
-{% set official_lightdm_exists = salt['file.file_exists'](official_i3_lightdm_config) %}
-{% set hud_lightdm_exists = salt['file.file_exists'](hud_lightdm_config) %}
-{% set hud_xsession_exists = salt['file.file_exists'](hud_xsession) %}
-{% set i3_owned = owner_marker in salt['file.read'](user_i3_config) if i3_exists else false %}
-{% set rofi_owned = (owner_marker in salt['file.read'](user_rofi_theme) or hud_asset_marker in salt['file.read'](user_rofi_theme)) if rofi_exists else false %}
-{% set dunst_owned = (owner_marker in salt['file.read'](user_dunst_config) or hud_asset_marker in salt['file.read'](user_dunst_config)) if dunst_exists else false %}
-{% set gtk3_owned = (owner_marker in salt['file.read'](user_gtk3_css) or hud_asset_marker in salt['file.read'](user_gtk3_css)) if gtk3_exists else false %}
-{% set gtk4_owned = (owner_marker in salt['file.read'](user_gtk4_css) or hud_asset_marker in salt['file.read'](user_gtk4_css)) if gtk4_exists else false %}
-{% set official_lightdm_owned = owner_marker in salt['file.read'](official_i3_lightdm_config) if official_lightdm_exists else false %}
-{% set hud_lightdm_owned = owner_marker in salt['file.read'](hud_lightdm_config) if hud_lightdm_exists else false %}
-{% set hud_xsession_owned = owner_marker in salt['file.read'](hud_xsession) if hud_xsession_exists else false %}
+{# Refuse every unexpected inode before any file.absent state can run. #}
+{% set binary_owner_regular = salt['file.file_exists'](hud_binary_owner)
+    and not salt['file.is_link'](hud_binary_owner) %}
+{% set binary_owner_owned = owner_marker in salt['file.read'](hud_binary_owner)
+    if binary_owner_regular else false %}
+{% set wallpaper_owner_regular = salt['file.file_exists'](hud_wallpaper_owner)
+    and not salt['file.is_link'](hud_wallpaper_owner) %}
+{% set wallpaper_owner_owned = owner_marker in salt['file.read'](hud_wallpaper_owner)
+    if wallpaper_owner_regular else false %}
+{% set picom_package_owner_regular = salt['file.file_exists'](picom_package_owner)
+    and not salt['file.is_link'](picom_package_owner) %}
+{% set picom_package_owner_owned = owner_marker in salt['file.read'](picom_package_owner)
+    if picom_package_owner_regular else false %}
+{% set legacy_picom_regular = salt['file.file_exists'](legacy_picom_config)
+    and not salt['file.is_link'](legacy_picom_config) %}
+{% set legacy_picom_contents = salt['file.read'](legacy_picom_config)
+    if legacy_picom_regular else '' %}
+{% set legacy_picom_owned = owner_marker in legacy_picom_contents
+    or hud_asset_marker in legacy_picom_contents %}
 
-{% set binary_exists = salt['file.file_exists'](hud_binary) %}
-{% set binary_owner_exists = salt['file.file_exists'](hud_binary_owner) %}
-{% set binary_owner_owned = owner_marker in salt['file.read'](hud_binary_owner) if binary_owner_exists else false %}
-{% set wallpaper_exists = salt['file.file_exists'](hud_wallpaper) %}
-{% set wallpaper_owner_exists = salt['file.file_exists'](hud_wallpaper_owner) %}
-{% set wallpaper_owner_owned = owner_marker in salt['file.read'](hud_wallpaper_owner) if wallpaper_owner_exists else false %}
+{% set text_targets = [
+    (user_i3_config, [owner_marker]),
+    (user_rofi_theme, [owner_marker, hud_asset_marker]),
+    (user_dunst_config, [owner_marker, hud_asset_marker]),
+    (user_gtk3_css, [owner_marker, hud_asset_marker]),
+    (user_gtk4_css, [owner_marker, hud_asset_marker]),
+    (official_i3_lightdm_config, [owner_marker]),
+    (hud_lightdm_config, [owner_marker]),
+    (hud_xsession, [owner_marker]),
+    (hud_binary_owner, [owner_marker]),
+    (keyboard_helper, [owner_marker]),
+    (hud_autostart_helper, [owner_marker]),
+    (picom_config, [owner_marker, hud_asset_marker]),
+    (picom_package_owner, [owner_marker]),
+    (hud_wallpaper_owner, [owner_marker])
+] %}
+{% set directory_targets = [
+    desktop_home ~ '/.config/i3',
+    desktop_home ~ '/.config/rofi',
+    desktop_home ~ '/.config/dunst',
+    desktop_home ~ '/.config/gtk-3.0',
+    desktop_home ~ '/.config/gtk-4.0',
+    '/usr/local/libexec/qubes-hud'
+] %}
+{% set collision = namespace(found=false) %}
 
-{% set unmanaged_collision =
-    (i3_exists and not i3_owned)
-    or (rofi_exists and not rofi_owned)
-    or (dunst_exists and not dunst_owned)
-    or (gtk3_exists and not gtk3_owned)
-    or (gtk4_exists and not gtk4_owned)
-    or (official_lightdm_exists and not official_lightdm_owned)
-    or (hud_lightdm_exists and not hud_lightdm_owned)
-    or (hud_xsession_exists and not hud_xsession_owned)
-    or (binary_exists and not binary_owner_owned)
-    or (binary_owner_exists and not binary_owner_owned)
-    or (wallpaper_exists and not wallpaper_owner_owned)
-    or (wallpaper_owner_exists and not wallpaper_owner_owned)
-    or salt['file.is_link'](user_i3_config)
-    or salt['file.is_link'](user_rofi_theme)
-    or salt['file.is_link'](user_dunst_config)
-    or salt['file.is_link'](user_gtk3_css)
-    or salt['file.is_link'](user_gtk4_css)
-    or salt['file.is_link'](official_i3_lightdm_config)
-    or salt['file.is_link'](hud_lightdm_config)
-    or salt['file.is_link'](hud_xsession)
-    or salt['file.is_link'](hud_binary)
-    or salt['file.is_link'](hud_binary_owner)
-    or salt['file.is_link'](hud_wallpaper)
-    or salt['file.is_link'](hud_wallpaper_owner)
-    or salt['file.is_link'](desktop_home ~ '/.config/i3')
-    or salt['file.is_link'](desktop_home ~ '/.config/rofi')
-    or salt['file.is_link'](desktop_home ~ '/.config/dunst')
-    or salt['file.is_link'](desktop_home ~ '/.config/gtk-3.0')
-    or salt['file.is_link'](desktop_home ~ '/.config/gtk-4.0')
-    or salt['file.is_link']('/usr/local/libexec/qubes-hud') %}
+{% for path, markers in text_targets %}
+  {% set target_lstat = salt['file.lstat'](path) %}
+  {% set target_exists = target_lstat|length > 0 %}
+  {% set target_regular = salt['file.file_exists'](path)
+      and not salt['file.is_link'](path) %}
+  {% set target_contents = salt['file.read'](path) if target_regular else '' %}
+  {% set target_owned = namespace(found=false) %}
+  {% for marker in markers %}
+    {% if marker in target_contents %}
+      {% set target_owned.found = true %}
+    {% endif %}
+  {% endfor %}
+  {% if target_exists and (not target_regular or not target_owned.found) %}
+    {% set collision.found = true %}
+  {% endif %}
+{% endfor %}
+
+{% for path in directory_targets %}
+  {% set directory_lstat = salt['file.lstat'](path) %}
+  {% if directory_lstat|length > 0
+      and (not salt['file.directory_exists'](path) or salt['file.is_link'](path)) %}
+    {% set collision.found = true %}
+  {% endif %}
+{% endfor %}
+
+{% for target, owner_owned in [
+    (hud_binary, binary_owner_owned),
+    (hud_wallpaper, wallpaper_owner_owned)
+] %}
+  {% set target_lstat = salt['file.lstat'](target) %}
+  {% if target_lstat|length > 0
+      and (not salt['file.file_exists'](target)
+           or salt['file.is_link'](target)
+           or not owner_owned) %}
+    {% set collision.found = true %}
+  {% endif %}
+{% endfor %}
+
+{% set unmanaged_collision = collision.found %}
 
 {% if not platform_ok %}
 qubes_gui_hud_rollback_unsupported_platform:
@@ -96,8 +131,8 @@ qubes_gui_hud_rollback_missing_desktop_user:
 qubes_gui_hud_rollback_unmanaged_target_refused:
   test.fail_without_changes:
     - name: >-
-        Refusing rollback because a target is a symlink or no longer contains
-        a recognized HUD ownership marker. No files were changed.
+        Refusing rollback because a target is not an owned regular file, or a
+        parent config path is not a real directory. No files were changed.
 
 {% else %}
 
@@ -206,5 +241,49 @@ qubes_gui_hud_rollback_remove_binary_owner:
     - name: {{ hud_binary_owner }}
     - require:
       - file: qubes_gui_hud_rollback_remove_binary
+
+qubes_gui_hud_rollback_remove_keyboard_helper:
+  file.absent:
+    - name: {{ keyboard_helper }}
+    - require:
+      - cmd: qubes_gui_hud_rollback_accountsservice_session
+
+qubes_gui_hud_rollback_remove_autostart_helper:
+  file.absent:
+    - name: {{ hud_autostart_helper }}
+    - require:
+      - cmd: qubes_gui_hud_rollback_accountsservice_session
+
+qubes_gui_hud_rollback_remove_picom_config:
+  file.absent:
+    - name: {{ picom_config }}
+    - require:
+      - cmd: qubes_gui_hud_rollback_accountsservice_session
+
+{% if legacy_picom_owned %}
+qubes_gui_hud_rollback_remove_owned_legacy_picom_config:
+  file.absent:
+    - name: {{ legacy_picom_config }}
+    - require:
+      - cmd: qubes_gui_hud_rollback_accountsservice_session
+{% endif %}
+
+{% if picom_package_owner_owned %}
+qubes_gui_hud_rollback_remove_owned_picom_package:
+  pkg.removed:
+    - name: picom
+    - require:
+      - file: qubes_gui_hud_rollback_remove_autostart_helper
+      - file: qubes_gui_hud_rollback_remove_picom_config
+{% if legacy_picom_owned %}
+      - file: qubes_gui_hud_rollback_remove_owned_legacy_picom_config
+{% endif %}
+
+qubes_gui_hud_rollback_remove_picom_package_owner:
+  file.absent:
+    - name: {{ picom_package_owner }}
+    - require:
+      - pkg: qubes_gui_hud_rollback_remove_owned_picom_package
+{% endif %}
 
 {% endif %}
