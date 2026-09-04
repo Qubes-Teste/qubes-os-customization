@@ -45,47 +45,47 @@ bindsym XF86AudioMicMute exec --no-startup-id $audio_mic_mute
 # slot carries the canonical Qubes label color used as a line fallback by the
 # trusted, patched i3 binary.
 # class/state                label   border   background text     indicator child-border
-client.focused               dom0    #19d3ff  #071b29    #d9faff  #f5f5f5  #19d3ff
+client.focused               dom0    #19d3ff  #071b29    #19d3ff  #f5f5f5  #19d3ff
 client.focused_inactive      dom0    #116b86  #081722    #7bb9c7  #f5f5f5  #116b86
 client.unfocused             dom0    #0d4052  #06111a    #517482  #f5f5f5  #0d4052
 client.urgent                dom0    #ff3b6b  #2a0a17    #ffffff  #f5f5f5  #ff3b6b
 
-client.focused               red     #19d3ff  #071b29    #d9faff  #cc0000  #19d3ff
+client.focused               red     #19d3ff  #071b29    #19d3ff  #cc0000  #19d3ff
 client.focused_inactive      red     #116b86  #081722    #7bb9c7  #cc0000  #116b86
 client.unfocused             red     #0d4052  #06111a    #517482  #cc0000  #0d4052
 client.urgent                red     #ff3b6b  #2a0a17    #ffffff  #cc0000  #ff3b6b
 
-client.focused               orange  #19d3ff  #071b29    #d9faff  #f57900  #19d3ff
+client.focused               orange  #19d3ff  #071b29    #19d3ff  #f57900  #19d3ff
 client.focused_inactive      orange  #116b86  #081722    #7bb9c7  #f57900  #116b86
 client.unfocused             orange  #0d4052  #06111a    #517482  #f57900  #0d4052
 client.urgent                orange  #ff3b6b  #2a0a17    #ffffff  #f57900  #ff3b6b
 
-client.focused               yellow  #19d3ff  #071b29    #d9faff  #edd400  #19d3ff
+client.focused               yellow  #19d3ff  #071b29    #19d3ff  #edd400  #19d3ff
 client.focused_inactive      yellow  #116b86  #081722    #7bb9c7  #edd400  #116b86
 client.unfocused             yellow  #0d4052  #06111a    #517482  #edd400  #0d4052
 client.urgent                yellow  #ff3b6b  #2a0a17    #ffffff  #edd400  #ff3b6b
 
-client.focused               green   #19d3ff  #071b29    #d9faff  #73d216  #19d3ff
+client.focused               green   #19d3ff  #071b29    #19d3ff  #73d216  #19d3ff
 client.focused_inactive      green   #116b86  #081722    #7bb9c7  #73d216  #116b86
 client.unfocused             green   #0d4052  #06111a    #517482  #73d216  #0d4052
 client.urgent                green   #ff3b6b  #2a0a17    #ffffff  #73d216  #ff3b6b
 
-client.focused               gray    #19d3ff  #071b29    #d9faff  #555555  #19d3ff
+client.focused               gray    #19d3ff  #071b29    #19d3ff  #555555  #19d3ff
 client.focused_inactive      gray    #116b86  #081722    #7bb9c7  #555555  #116b86
 client.unfocused             gray    #0d4052  #06111a    #517482  #555555  #0d4052
 client.urgent                gray    #ff3b6b  #2a0a17    #ffffff  #555555  #ff3b6b
 
-client.focused               blue    #19d3ff  #071b29    #d9faff  #3465a4  #19d3ff
+client.focused               blue    #19d3ff  #071b29    #19d3ff  #3465a4  #19d3ff
 client.focused_inactive      blue    #116b86  #081722    #7bb9c7  #3465a4  #116b86
 client.unfocused             blue    #0d4052  #06111a    #517482  #3465a4  #0d4052
 client.urgent                blue    #ff3b6b  #2a0a17    #ffffff  #3465a4  #ff3b6b
 
-client.focused               purple  #19d3ff  #071b29    #d9faff  #75507b  #19d3ff
+client.focused               purple  #19d3ff  #071b29    #19d3ff  #75507b  #19d3ff
 client.focused_inactive      purple  #116b86  #081722    #7bb9c7  #75507b  #116b86
 client.unfocused             purple  #0d4052  #06111a    #517482  #75507b  #0d4052
 client.urgent                purple  #ff3b6b  #2a0a17    #ffffff  #75507b  #ff3b6b
 
-client.focused               black   #19d3ff  #071b29    #d9faff  #000000  #19d3ff
+client.focused               black   #19d3ff  #071b29    #19d3ff  #000000  #19d3ff
 client.focused_inactive      black   #116b86  #081722    #7bb9c7  #000000  #116b86
 client.unfocused             black   #0d4052  #06111a    #517482  #000000  #0d4052
 client.urgent                black   #ff3b6b  #2a0a17    #ffffff  #000000  #ff3b6b
@@ -264,11 +264,11 @@ bar {
 
         colors {
                 background         #000000
-                statusline         #d9faff
+                statusline         #19d3ff
                 separator          #116b86
 
                 # class            border   background text
-                focused_workspace  #19d3ff  #071b29    #d9faff
+                focused_workspace  #19d3ff  #071b29    #19d3ff
                 active_workspace   #116b86  #081722    #7bb9c7
                 inactive_workspace #0d4052  #06111a    #517482
                 urgent_workspace   #ff3b6b  #2a0a17    #ffffff

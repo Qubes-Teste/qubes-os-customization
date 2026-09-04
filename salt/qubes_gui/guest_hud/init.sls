@@ -262,7 +262,7 @@ qubes_gui_guest_hud_version:
     - name: {{ config_root }}/VERSION
     - contents: |
         # {{ owner_marker }}
-        1
+        2
     - user: root
     - group: root
     - mode: '0644'

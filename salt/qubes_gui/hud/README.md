@@ -10,10 +10,13 @@ the trusted window-manager decoration. It begins after the rendered title,
 fades from 4% to 100% label intensity toward the right, has a subtle
 label-colored two-layer halo, and recalculates its length whenever the window
 changes size. Applications cannot paint or move the line. The normal window
-frame remains on the shared black/cyan HUD palette. A compact alert-pink close
-button occupies its own region at the far right of every normally decorated
-application window. The label line and its glow end before that region, so they
-cannot overlap the button at any window width or display scale.
+frame remains on the shared black/cyan HUD palette. A compact close button in
+the same trusted Qubes label color appears at the far right of normally
+decorated application windows. It occupies its own region, and the label line
+and its glow end before that region, so they cannot overlap the button at any
+window width or display scale.
+Normal shell and application text uses the focused-frame cyan `#19d3ff`.
+Muted, disabled, selected, and urgent text retains separate semantic colors.
 Picom adds an external cyan halo and an edge-weighted inner rim that fades
 toward the center. Universal glass intentionally composites each
 non-fullscreen application, including its Qubes frame and label line, at 30%
@@ -68,6 +71,7 @@ The state expects these sources under `qubes_gui/hud/files/`:
 - `qubes-hud-wallpaper.png`
 - `qubes-hud.rasi`
 - `dunstrc`
+- `terminalrc`
 - `gtk-3.css`
 - `gtk-4.css`
 
@@ -95,10 +99,15 @@ context-sensitive behavior and opens a terminal in the focused qube. Click
 the close button or press `Alt+F4` to close a window. Fullscreen windows have no
 decoration, so use the keyboard shortcut there.
 
+The state also owns the desktop user's Xfce Terminal profile so its normal and
+uncolored bold text uses `#19d3ff`. The HUD XSession selects Qt's GTK platform
+theme, allowing native Qt applications to consume the same standard palette at
+the next login.
+
 Except for binary assets, every managed source must contain a recognized text
 ownership marker. Formula/session files use
-`Managed by qubes-os-customization Salt formula`; the Rofi, Dunst, and GTK
-assets, Picom config, and window shader use
+`Managed by qubes-os-customization Salt formula`; the Rofi, Dunst, Xfce
+Terminal, and GTK assets, Picom config, and window shader use
 `Qubes HUD managed file. Owner: salt/qubes_gui/hud.`. Binary ownership is
 recorded by adjacent `.owner` files created only after the corresponding asset
 has been installed successfully.
@@ -108,11 +117,11 @@ has been installed successfully.
 The state checks every destination with `lstat` and refuses as a whole when a
 target is a symbolic link, directory, FIFO, device, socket, other non-regular
 inode, or a regular file lacking the ownership marker. This deliberately
-protects an existing i3 config, Rofi theme, Dunst config, GTK CSS, Picom
-config, window shader, helper, LightDM override, or XSession from silent
-adoption. It also ensures rollback can never recursively remove an unexpected
-directory. For the i3 binary and wallpaper, a pre-existing regular file is
-accepted only when its adjacent ownership record carries the marker.
+protects an existing i3 config, Rofi theme, Dunst config, Xfce Terminal profile,
+GTK CSS, Picom config, window shader, helper, LightDM override, or XSession from
+silent adoption. It also ensures rollback can never recursively remove an
+unexpected directory. For the i3 binary and wallpaper, a pre-existing regular
+file is accepted only when its adjacent ownership record carries the marker.
 
 If a collision is intentional, move or merge that file manually and run the
 dry run again. There is no force-overwrite pillar.
@@ -156,9 +165,9 @@ sudo qubesctl state.sls qubes_gui.hud.rollback saltenv=user
 
 Rollback selects the packaged `i3` session for the next login, restores the
 include-only `~/.config/i3/config`, and removes only owner-marked HUD files,
-the HUD XSession, wallpaper, helpers, Picom config and shader, and custom
-binary. It removes Picom only when the HUD's package-ownership record proves
-that the formula installed it; otherwise Picom is left untouched. It leaves
-`rofi`, `feh`, and all packaged Qubes/i3 components installed. If any target is
-no longer an owner-marked regular file, rollback refuses before making
-changes.
+including the Xfce Terminal profile, plus the HUD XSession, wallpaper, helpers,
+Picom config and shader, and custom binary. It removes Picom only when the
+HUD's package-ownership record proves that the formula installed it; otherwise
+Picom is left untouched. It leaves `rofi`, `feh`, and all packaged Qubes/i3
+components installed. If any target is no longer an owner-marked regular file,
+rollback refuses before making changes.

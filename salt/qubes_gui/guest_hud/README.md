@@ -16,6 +16,10 @@ The state supplies:
 - Qt 5 and Qt 6 GTK palette integration when the template already contains
   either generation's GTK 3 platform plugin.
 
+Normal application and terminal text uses the same `#19d3ff` cyan as dom0's
+focused window frame. White remains reserved for selection, urgent, and ANSI
+white roles; muted and disabled text remains deliberately dimmer.
+
 The outer Qubes frame, rounded clipping, trusted label line, transparency,
 blur, and glow remain in dom0. Installing a compositor or window manager in a
 TemplateVM would not improve seamless guest windows and is intentionally out

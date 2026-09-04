@@ -83,7 +83,7 @@ index f3388db..4c45dfb 100644
       * default behavior. */
      Binding *bind = get_binding_from_xcb_event((xcb_generic_event_t *)event);
 diff --git a/src/x.c b/src/x.c
-index 24ccb3a..8ce05f3 100644
+index 24ccb3a..5e747d9 100644
 --- a/src/x.c
 +++ b/src/x.c
 @@ -42,6 +42,82 @@ static const uint32_t qubes_label_fallback_rgb[QUBE_NUM_LABELS] = {
@@ -115,7 +115,7 @@ index 24ccb3a..8ce05f3 100644
 +    return result;
 +}
 +
-+/* Draw a compact alert-colored circular close button. The larger invisible
++/* Draw a compact label-colored circular close button. The larger invisible
 + * hit target returned above makes it usable without consuming the titlebar. */
 +static void draw_qubes_hud_close_button(surface_t *surface, color_t color,
 +                                        Rect hit_rect) {
@@ -209,7 +209,7 @@ index 24ccb3a..8ce05f3 100644
                                (int)con->deco_rect.height);
      }
 +    draw_qubes_hud_close_button(dest_surface,
-+                                draw_util_hex_to_color("#ff3b6b"),
++                                qubes_label_color,
 +                                close_button_rect);
  copy_pixmaps:
      draw_util_copy_surface(&(con->frame_buffer), &(con->frame), 0, 0, 0, 0, con->rect.width, con->rect.height);

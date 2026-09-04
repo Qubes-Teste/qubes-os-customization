@@ -2,7 +2,7 @@
 [Desktop Entry]
 Name=Qubes HUD (i3)
 Comment=Qubes trusted HUD session using the pinned i3 build
-Exec=/usr/local/libexec/qubes-hud/i3
+Exec=/usr/bin/env QT_QPA_PLATFORMTHEME=gtk3 /usr/local/libexec/qubes-hud/i3
 TryExec=/usr/local/libexec/qubes-hud/i3
 Type=XSession
 X-LightDM-DesktopName=qubes-hud

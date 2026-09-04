@@ -88,6 +88,11 @@ with display DPI. The dom0 HUD state deliberately does not style AppVM
 application content or web pages. The guest-template state below adds the
 matching toolkit style.
 
+Normal dom0 shell, toolkit, and terminal text uses the same `#19d3ff` cyan as
+the focused outer frame. Semantic selection, muted, disabled, and urgent text
+keeps distinct colors. Native Qt applications consume the GTK palette from a
+fresh HUD login.
+
 Tiled windows can be dragged directly by their title bars. Drop near the top,
 bottom, left, or right edge of another window to choose its tiled position;
 drag a shared border to resize the neighboring tiles. Hold Shift before
@@ -100,14 +105,15 @@ opens a terminal in the currently focused qube.
 Qubes label colors remain visible as thin horizontal lines in normal window
 decorations. Each line starts just after the rendered title, fades from nearly
 transparent there to full label intensity at the right, carries a restrained
-same-color halo, and automatically resizes with the window. A compact
-alert-pink close button has a dedicated region at the far right; the label line
-and its glow stop before that region and cannot overlap it. Click the button or
-press `Alt+F4` to close a window. The label line is painted by a pinned,
-hardened i3 binary in dom0 from gui-daemon's trusted label-color property. The
-close control is likewise part of i3's trusted decoration; AppVM content cannot
-paint or reposition either control. Picom intentionally composites each
-non-fullscreen window, including its Qubes frame and label line, at 30%
+same-color halo, and automatically resizes with the window. A compact close
+button in the same trusted Qubes label color has a dedicated region at the far
+right; the label line and its glow stop before that region and cannot overlap
+it. Click the button or press `Alt+F4` to close a window. The label line and
+close button are painted by a pinned, hardened i3 binary in dom0 from
+gui-daemon's trusted label-color property. Both are part of i3's trusted
+decoration; AppVM content cannot paint or reposition either control. Picom
+intentionally composites each non-fullscreen window, including its Qubes frame
+and label line, at 30%
 transparency (70% opacity) with background blur, an external cyan halo, and an
 edge-weighted inner rim that fades toward the center. Fullscreen windows remain
 opaque. The packaged
@@ -159,6 +165,8 @@ TemplateVM's persistent root filesystem. It provides a named GTK 2/3/4 theme,
 locked system Xfce and dconf defaults, matching fonts/icons and terminal
 colors, and Qt 5/6 GTK palette integration when that adapter is present. It
 does not touch TemplateVM or AppVM home directories.
+The default application and terminal foreground is the focused-frame cyan
+`#19d3ff` on every supported template family.
 
 Retrofit an existing TemplateVM with a dry run followed by an apply:
 

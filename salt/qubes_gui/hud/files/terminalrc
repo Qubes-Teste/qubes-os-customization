@@ -1,4 +1,4 @@
-# Qubes HUD managed file. Owner: salt/qubes_gui/guest_hud.
+# Qubes HUD managed file. Owner: salt/qubes_gui/hud.
 [Configuration]
 FontName=Noto Sans Mono 10
 ColorForeground=#19d3ff

@@ -17,13 +17,14 @@ painted by AppVM content. The existing `[qube-name]` prefix is retained.
 The trusted decoration also gives that prefix a 10-logical-pixel left inset so
 Picom's rounded window corner cannot clip its first glyph.
 
-Each normally decorated application window also has a compact alert-pink close
-button in a dedicated 26-logical-pixel region at the far right. The label line,
-including its halo, ends before that region, so the two trusted controls cannot
-overlap as the window is resized. Pressing and releasing the primary mouse
-button on the same close control requests a normal application close; `Alt+F4`
-is the keyboard fallback. A fullscreen or `BS_NONE` window has no decoration
-and therefore no button.
+Normally decorated application windows also have a compact close button in the
+same validated Qubes label color as the line, including its canonical fallback.
+The button uses a dedicated 26-logical-pixel region at the far right. The label
+line, including its halo, ends before that region, so the two trusted controls
+cannot overlap as the window is resized. Pressing and releasing the primary
+mouse button on the same close control requests a normal application close;
+`Alt+F4` is the keyboard fallback. A fullscreen or `BS_NONE` window has no
+decoration and therefore no button.
 
 For compatibility with older gui-daemon versions, a strictly parsed legacy
 label index selects a built-in canonical color. `BS_PIXEL` windows retain a

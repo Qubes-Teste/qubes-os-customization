@@ -7,7 +7,7 @@
 {% set desktop_home = user_info.get('home', '/home/' ~ desktop_user) if user_info else '/home/' ~ desktop_user %}
 {% set owner_marker = 'Managed by qubes-os-customization Salt formula' %}
 {% set hud_asset_marker = 'Qubes HUD managed file. Owner: salt/qubes_gui/hud.' %}
-{% set i3_hud_sha256 = '75c4d58ebbe3df3ae0c2ae22aa0f236cb6904529f66721c378366b3f47a4a127' %}
+{% set i3_hud_sha256 = 'fbd035f0e776acf755cffb021e8ef922b1da005ce4c54b3e54f3af545daf1f8f' %}
 {% set expected_i3_evr = '1000:4.25.1-1.fc41.x86_64' %}
 {% set expected_i3_settings_evr = '1.14-1.fc41' %}
 {% set release = grains.get('osrelease', '')|string %}
@@ -30,6 +30,7 @@
 {% set user_i3_config = desktop_home ~ '/.config/i3/config' %}
 {% set user_rofi_theme = desktop_home ~ '/.config/rofi/config.rasi' %}
 {% set user_dunst_config = desktop_home ~ '/.config/dunst/dunstrc' %}
+{% set user_xfce_terminal = desktop_home ~ '/.config/xfce4/terminal/terminalrc' %}
 {% set user_gtk3_css = desktop_home ~ '/.config/gtk-3.0/gtk.css' %}
 {% set user_gtk4_css = desktop_home ~ '/.config/gtk-4.0/gtk.css' %}
 {% set lightdm_config = '/etc/lightdm/lightdm.conf.d/91-qubes-hud.conf' %}
@@ -78,6 +79,7 @@
     (user_i3_config, [owner_marker]),
     (user_rofi_theme, [owner_marker, hud_asset_marker]),
     (user_dunst_config, [owner_marker, hud_asset_marker]),
+    (user_xfce_terminal, [owner_marker, hud_asset_marker]),
     (user_gtk3_css, [owner_marker, hud_asset_marker]),
     (user_gtk4_css, [owner_marker, hud_asset_marker]),
     (lightdm_config, [owner_marker]),
@@ -94,6 +96,8 @@
     desktop_home ~ '/.config/i3',
     desktop_home ~ '/.config/rofi',
     desktop_home ~ '/.config/dunst',
+    desktop_home ~ '/.config/xfce4',
+    desktop_home ~ '/.config/xfce4/terminal',
     desktop_home ~ '/.config/gtk-3.0',
     desktop_home ~ '/.config/gtk-4.0',
     '/usr/local/libexec/qubes-hud'
@@ -370,6 +374,14 @@ qubes_gui_hud_user_dunst_directory:
     - mode: '0755'
     - makedirs: true
 
+qubes_gui_hud_user_xfce_terminal_directory:
+  file.directory:
+    - name: {{ desktop_home }}/.config/xfce4/terminal
+    - user: {{ desktop_user }}
+    - group: {{ desktop_group }}
+    - mode: '0755'
+    - makedirs: true
+
 qubes_gui_hud_user_gtk3_directory:
   file.directory:
     - name: {{ desktop_home }}/.config/gtk-3.0
@@ -428,6 +440,17 @@ qubes_gui_hud_dunst_config:
     - require:
       - file: qubes_gui_hud_user_dunst_directory
 
+qubes_gui_hud_xfce_terminal:
+  file.managed:
+    - name: {{ user_xfce_terminal }}
+    - source: salt://qubes_gui/hud/files/terminalrc
+    - user: {{ desktop_user }}
+    - group: {{ desktop_group }}
+    - mode: '0644'
+    - backup: minion
+    - require:
+      - file: qubes_gui_hud_user_xfce_terminal_directory
+
 qubes_gui_hud_gtk3_css:
   file.managed:
     - name: {{ user_gtk3_css }}
@@ -480,6 +503,7 @@ qubes_gui_hud_xsession:
     - require:
       - cmd: qubes_gui_hud_i3_binary_checksum
       - file: qubes_gui_hud_i3_config
+      - file: qubes_gui_hud_xfce_terminal
       - file: qubes_gui_hud_picom_config
       - file: qubes_gui_hud_autostart_helper
       - file: qubes_gui_hud_wallpaper

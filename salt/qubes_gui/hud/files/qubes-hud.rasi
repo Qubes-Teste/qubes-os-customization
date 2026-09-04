@@ -22,7 +22,7 @@ configuration {
     hud-cyan-wash:              #19d3ff33;
     hud-cyan:                   #19d3ff;
     hud-cyan-muted:             #116b86;
-    hud-text:                   #d9faff;
+    hud-text:                   #19d3ff;
     hud-text-muted:             #7bb9c7;
     hud-alert:                  #ff3b6b;
 

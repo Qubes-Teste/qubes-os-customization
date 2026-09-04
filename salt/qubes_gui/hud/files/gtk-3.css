@@ -11,9 +11,21 @@
 @define-color hud_cyan_wash rgba(25, 211, 255, 0.14);
 @define-color hud_cyan #19d3ff;
 @define-color hud_cyan_dim #116b86;
-@define-color hud_text #d9faff;
+@define-color hud_text #19d3ff;
 @define-color hud_text_dim #7bb9c7;
 @define-color hud_alert #ff3b6b;
+
+/* Standard GTK names also feed Qt's GTK platform-theme palette. */
+@define-color theme_bg_color @hud_bg;
+@define-color theme_base_color @hud_bg;
+@define-color theme_fg_color @hud_text;
+@define-color theme_text_color @hud_text;
+@define-color theme_selected_bg_color @hud_cyan_dim;
+@define-color theme_selected_fg_color #ffffff;
+@define-color theme_unfocused_bg_color @hud_surface;
+@define-color theme_unfocused_fg_color @hud_text_dim;
+@define-color insensitive_bg_color @hud_surface;
+@define-color insensitive_fg_color @hud_text_dim;
 
 window.background,
 dialog.background,

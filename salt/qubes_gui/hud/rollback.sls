@@ -16,6 +16,7 @@
 {% set user_i3_config = desktop_home ~ '/.config/i3/config' %}
 {% set user_rofi_theme = desktop_home ~ '/.config/rofi/config.rasi' %}
 {% set user_dunst_config = desktop_home ~ '/.config/dunst/dunstrc' %}
+{% set user_xfce_terminal = desktop_home ~ '/.config/xfce4/terminal/terminalrc' %}
 {% set user_gtk3_css = desktop_home ~ '/.config/gtk-3.0/gtk.css' %}
 {% set user_gtk4_css = desktop_home ~ '/.config/gtk-4.0/gtk.css' %}
 {% set official_i3_lightdm_config = '/etc/lightdm/lightdm.conf.d/90-qubes-i3.conf' %}
@@ -56,6 +57,7 @@
     (user_i3_config, [owner_marker]),
     (user_rofi_theme, [owner_marker, hud_asset_marker]),
     (user_dunst_config, [owner_marker, hud_asset_marker]),
+    (user_xfce_terminal, [owner_marker, hud_asset_marker]),
     (user_gtk3_css, [owner_marker, hud_asset_marker]),
     (user_gtk4_css, [owner_marker, hud_asset_marker]),
     (official_i3_lightdm_config, [owner_marker]),
@@ -73,6 +75,8 @@
     desktop_home ~ '/.config/i3',
     desktop_home ~ '/.config/rofi',
     desktop_home ~ '/.config/dunst',
+    desktop_home ~ '/.config/xfce4',
+    desktop_home ~ '/.config/xfce4/terminal',
     desktop_home ~ '/.config/gtk-3.0',
     desktop_home ~ '/.config/gtk-4.0',
     '/usr/local/libexec/qubes-hud'
@@ -213,6 +217,10 @@ qubes_gui_hud_rollback_remove_rofi_theme:
 qubes_gui_hud_rollback_remove_dunst_config:
   file.absent:
     - name: {{ user_dunst_config }}
+
+qubes_gui_hud_rollback_remove_xfce_terminal:
+  file.absent:
+    - name: {{ user_xfce_terminal }}
 
 qubes_gui_hud_rollback_remove_gtk3_css:
   file.absent:

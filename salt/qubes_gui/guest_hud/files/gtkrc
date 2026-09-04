@@ -1,6 +1,6 @@
 # Qubes HUD managed file. Owner: salt/qubes_gui/guest_hud.
 
-gtk-color-scheme = "hud_bg:#02070c\nhud_surface:#06111a\nhud_raised:#081b29\nhud_cyan:#19d3ff\nhud_cyan_dim:#116b86\nhud_text:#d9faff\nhud_text_dim:#7bb9c7\nhud_alert:#ff3b6b"
+gtk-color-scheme = "hud_bg:#02070c\nhud_surface:#06111a\nhud_raised:#081b29\nhud_cyan:#19d3ff\nhud_cyan_dim:#116b86\nhud_text:#19d3ff\nhud_text_dim:#7bb9c7\nhud_alert:#ff3b6b"
 gtk-font-name = "Noto Sans 10"
 
 style "qubes-hud-default" {
