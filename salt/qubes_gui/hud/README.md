@@ -10,7 +10,10 @@ the trusted window-manager decoration. It begins after the rendered title,
 fades from 4% to 100% label intensity toward the right, has a subtle
 label-colored two-layer halo, and recalculates its length whenever the window
 changes size. Applications cannot paint or move the line. The normal window
-frame remains on the shared black/cyan HUD palette.
+frame remains on the shared black/cyan HUD palette. A compact alert-pink close
+button occupies its own region at the far right of every normally decorated
+application window. The label line and its glow end before that region, so they
+cannot overlap the button at any window width or display scale.
 Picom adds an external cyan halo and an edge-weighted inner rim that fades
 toward the center. Universal glass intentionally composites each
 non-fullscreen application, including its Qubes frame and label line, at 30%
@@ -88,7 +91,9 @@ left untouched for other desktop sessions.
 Terminal shortcuts retain Qubes' context-sensitive behavior while adding an
 unambiguous trusted path: `Ctrl+Alt+T` always starts `xfce4-terminal` locally
 in dom0. The key with the Windows logo plus Enter keeps Qubes' standard
-context-sensitive behavior and opens a terminal in the focused qube.
+context-sensitive behavior and opens a terminal in the focused qube. Click
+the close button or press `Alt+F4` to close a window. Fullscreen windows have no
+decoration, so use the keyboard shortcut there.
 
 Except for binary assets, every managed source must contain a recognized text
 ownership marker. Formula/session files use
@@ -135,6 +140,10 @@ Supported pillar keys are `qubes_gui:hud:desktop_user`, `desktop_group`, and
 
 Log out normally and select **Qubes HUD (i3)** if LightDM does not select it
 automatically. Do not restart LightDM from an active dom0 desktop session.
+Applying an updated state does not replace the i3 process already running in
+an existing HUD session. Log out and back in to activate the new binary. An
+`i3-msg reload` only reloads configuration and is insufficient; after
+validation, `i3-msg restart` can deliberately restart i3 in place.
 
 ## Roll back
 

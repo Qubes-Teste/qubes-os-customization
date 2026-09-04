@@ -8,6 +8,7 @@ readonly SOURCE_DATE_EPOCH_VALUE="1770581259"
 readonly I3_TARBALL_SHA512="10d44f7efcfb23089edf5ec9783ddd3b9dca5592f4d5b101ec7158cd75ec73d917e3025250968c1c8e2d44c64d749855000a07b16059c582c1e80b1220ac7c81"
 readonly QUBES_PATCH_SHA256="8dadd57d223d3df5df313807b7abb89c384ca313bb028e3a41b73ffe39766461"
 readonly HUD_PATCH_SHA256="f0a45e0f487a8731cfceb71b7713fc29fdd3cf21a9cb23ffa2f184d2626c1226"
+readonly CLOSE_PATCH_SHA256="7d1ec0b74df543f943340b8db290872561f76f0dd067ee0cae4afad59620a0fa"
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(CDPATH= cd -- "${script_dir}/../.." && pwd)"
@@ -48,6 +49,8 @@ env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
 printf '%s  %s\n' "${QUBES_PATCH_SHA256}" "${qubes_patch}" | sha256sum --check --strict -
 printf '%s  %s\n' "${HUD_PATCH_SHA256}" \
     "${script_dir}/0002-qubes-hud-trusted-label-badge.patch" | sha256sum --check --strict -
+printf '%s  %s\n' "${CLOSE_PATCH_SHA256}" \
+    "${script_dir}/0003-qubes-hud-close-button.patch" | sha256sum --check --strict -
 
 tar --extract --file "${tarball}" --directory "${build_root}"
 (
@@ -56,6 +59,8 @@ tar --extract --file "${tarball}" --directory "${build_root}"
     git apply "${qubes_patch}"
     git apply --check "${script_dir}/0002-qubes-hud-trusted-label-badge.patch"
     git apply "${script_dir}/0002-qubes-hud-trusted-label-badge.patch"
+    git apply --check "${script_dir}/0003-qubes-hud-close-button.patch"
+    git apply "${script_dir}/0003-qubes-hud-close-button.patch"
 )
 
 fedora_cflags="$(rpm --eval '%{build_cflags}')"

@@ -126,6 +126,9 @@ bindcode Control+Mod1+28 exec --no-startup-id $dom0_terminal
 # Kill focused window.
 bindcode $mod+Shift+24 kill
 
+# Standard desktop fallback that does not require knowing the i3 modifier.
+bindsym Mod1+F4 kill
+
 # Start the HUD application launcher.
 bindcode $mod+40 exec --no-startup-id rofi -show drun
 

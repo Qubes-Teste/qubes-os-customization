@@ -1,0 +1,216 @@
+diff --git a/include/x.h b/include/x.h
+index 8d8039a..69206f6 100644
+--- a/include/x.h
++++ b/include/x.h
+@@ -67,6 +67,12 @@ bool window_supports_protocol(xcb_window_t window, xcb_atom_t atom);
+  */
+ void x_window_kill(xcb_window_t window, kill_window_t kill_window);
+ 
++/**
++ * Returns the trusted HUD close-button hit area in frame coordinates. An
++ * empty rectangle means this container has no normal window decoration.
++ */
++Rect x_qubes_hud_close_button_rect(Con *con);
++
+ /**
+  * Draws the decoration of the given container onto its parent.
+  *
+diff --git a/src/click.c b/src/click.c
+index f3388db..4c45dfb 100644
+--- a/src/click.c
++++ b/src/click.c
+@@ -15,6 +15,12 @@ typedef enum { CLICK_BORDER = 0,
+                CLICK_DECORATION = 1,
+                CLICK_INSIDE = 2 } click_destination_t;
+ 
++/* Frame and client on which the user pressed the trusted HUD close control.
++ * Waiting for release avoids forwarding that release to the window exposed
++ * by closing; checking the client also distinguishes tabs sharing a frame. */
++static xcb_window_t qubes_hud_close_pressed_frame = XCB_NONE;
++static xcb_window_t qubes_hud_close_pressed_window = XCB_NONE;
++
+ /*
+  * Finds the correct pair of first/second cons between the resize will take
+  * place according to the passed border position (top, left, right, bottom),
+@@ -180,6 +186,49 @@ static void route_click(Con *con, xcb_button_press_event_t *event, const click_d
+         return;
+     }
+ 
++    /* The HUD close control is part of i3's trusted decoration. Handle it
++     * before titlebar bindings and drag/resize routing so a left click cannot
++     * be mistaken for a window move. */
++    const bool is_close_button_event =
++        dest == CLICK_DECORATION &&
++        event->detail == XCB_BUTTON_CLICK_LEFT &&
++        event->event_x >= 0 && event->event_y >= 0;
++    const Rect close_rect = x_qubes_hud_close_button_rect(con);
++    const bool pointer_in_close_button =
++        is_close_button_event &&
++        close_rect.width > 0 && close_rect.height > 0 &&
++        rect_contains(close_rect, event->event_x, event->event_y);
++    if (event->response_type == XCB_BUTTON_PRESS &&
++        event->detail == XCB_BUTTON_CLICK_LEFT) {
++        if (pointer_in_close_button) {
++            qubes_hud_close_pressed_frame = event->event;
++            qubes_hud_close_pressed_window = con->window->id;
++        } else {
++            qubes_hud_close_pressed_frame = XCB_NONE;
++            qubes_hud_close_pressed_window = XCB_NONE;
++        }
++    }
++    if (event->response_type == XCB_BUTTON_PRESS && pointer_in_close_button) {
++        xcb_allow_events(conn, XCB_ALLOW_ASYNC_POINTER, event->time);
++        xcb_flush(conn);
++        return;
++    }
++    if (event->response_type == XCB_BUTTON_RELEASE &&
++        event->detail == XCB_BUTTON_CLICK_LEFT &&
++        qubes_hud_close_pressed_frame != XCB_NONE) {
++        const bool close_window = pointer_in_close_button &&
++                                  qubes_hud_close_pressed_frame == event->event &&
++                                  qubes_hud_close_pressed_window == con->window->id;
++        qubes_hud_close_pressed_frame = XCB_NONE;
++        qubes_hud_close_pressed_window = XCB_NONE;
++        xcb_allow_events(conn, XCB_ALLOW_ASYNC_POINTER, event->time);
++        xcb_flush(conn);
++        if (close_window) {
++            con_close(con, KILL_WINDOW);
++        }
++        return;
++    }
++
+     /* if the user has bound an action to this click, it should override the
+      * default behavior. */
+     Binding *bind = get_binding_from_xcb_event((xcb_generic_event_t *)event);
+diff --git a/src/x.c b/src/x.c
+index 24ccb3a..8ce05f3 100644
+--- a/src/x.c
++++ b/src/x.c
+@@ -42,6 +42,82 @@ static const uint32_t qubes_label_fallback_rgb[QUBE_NUM_LABELS] = {
+     [QUBE_BLACK] = 0x000000,
+ };
+ 
++/* Keep drawing and hit-testing on one geometry function. The hit target spans
++ * the complete titlebar height while its glyph remains compact and centered. */
++Rect x_qubes_hud_close_button_rect(Con *con) {
++    Rect result = {0, 0, 0, 0};
++    if (con == NULL || con->window == NULL ||
++        con_border_style(con) != BS_NORMAL ||
++        con->deco_rect.width == 0 || con->deco_rect.height == 0) {
++        return result;
++    }
++
++    const int deco_width = (int)con->deco_rect.width;
++    const int deco_height = (int)con->deco_rect.height;
++    const int hit_width = min(logical_px(26), deco_width);
++    const int min_glyph_extent = 2 * logical_px(2) + logical_px(8);
++    if (hit_width < min_glyph_extent || deco_height < min_glyph_extent) {
++        return result;
++    }
++
++    result.x = con->deco_rect.x + con->deco_rect.width - hit_width;
++    result.y = con->deco_rect.y;
++    result.width = hit_width;
++    result.height = con->deco_rect.height;
++    return result;
++}
++
++/* Draw a compact alert-colored circular close button. The larger invisible
++ * hit target returned above makes it usable without consuming the titlebar. */
++static void draw_qubes_hud_close_button(surface_t *surface, color_t color,
++                                        Rect hit_rect) {
++    if (surface->id == XCB_NONE || hit_rect.width == 0 || hit_rect.height == 0) {
++        return;
++    }
++
++    const double inset = logical_px(2);
++    const double available_extent = min((double)hit_rect.width,
++                                        (double)hit_rect.height);
++    const double diameter = min((double)logical_px(16),
++                                max(0.0, available_extent - 2.0 * inset));
++    if (diameter < logical_px(8)) {
++        return;
++    }
++
++    const double center_x = hit_rect.x + hit_rect.width / 2.0;
++    const double center_y = hit_rect.y + hit_rect.height / 2.0;
++    const double radius = diameter / 2.0;
++    const double arm = radius * 0.43;
++
++    cairo_save(surface->cr);
++    cairo_set_operator(surface->cr, CAIRO_OPERATOR_OVER);
++    cairo_arc(surface->cr, center_x, center_y, radius,
++              0.0, 2.0 * 3.14159265358979323846);
++    cairo_set_source_rgba(surface->cr, color.red, color.green, color.blue,
++                          color.alpha * 0.14);
++    cairo_fill_preserve(surface->cr);
++    cairo_set_line_width(surface->cr, max(1, logical_px(1)));
++    cairo_set_source_rgba(surface->cr, color.red, color.green, color.blue,
++                          color.alpha * 0.64);
++    cairo_stroke(surface->cr);
++
++    cairo_set_line_cap(surface->cr, CAIRO_LINE_CAP_ROUND);
++    const double stroke_widths[] = {logical_px(4), logical_px(2)};
++    const double stroke_opacities[] = {0.18, 1.0};
++    for (size_t i = 0; i < 2; i++) {
++        cairo_set_line_width(surface->cr, min(diameter / 2.0, stroke_widths[i]));
++        cairo_set_source_rgba(surface->cr, color.red, color.green, color.blue,
++                              color.alpha * stroke_opacities[i]);
++        cairo_move_to(surface->cr, center_x - arm, center_y - arm);
++        cairo_line_to(surface->cr, center_x + arm, center_y + arm);
++        cairo_move_to(surface->cr, center_x + arm, center_y - arm);
++        cairo_line_to(surface->cr, center_x - arm, center_y + arm);
++        cairo_stroke(surface->cr);
++    }
++    CAIRO_SURFACE_FLUSH(surface->surface);
++    cairo_restore(surface->cr);
++}
++
+ /* Draw a trusted label-colored line over the already-painted title bar. Two
+  * low-opacity strokes form a restrained halo beneath the solid core. All three
+  * fade toward the title while retaining the full label color at the right. */
+@@ -736,10 +812,17 @@ void x_draw_decoration(Con *con) {
+     const int deco_width = (int)con->deco_rect.width;
+     const int title_padding = logical_px(10);
+ 
++    /* The close hit target is a dedicated right-hand region. Both title
++     * content and the trusted label line stop before it. */
++    const Rect close_button_rect = x_qubes_hud_close_button_rect(con);
++    const int close_button_reserve = (int)close_button_rect.width;
++
+     /* Keep a small trusted-label area available even when a title is long.
+      * It shrinks proportionally for narrow tab decorations. */
+-    const int label_line_reserve = min(logical_px(40), max(0, deco_width / 3));
+-    const int content_width = max(0, deco_width - label_line_reserve);
++    const int width_before_close = max(0, deco_width - close_button_reserve);
++    const int label_line_reserve = min(logical_px(40),
++                                       max(0, width_before_close / 3));
++    const int content_width = max(0, width_before_close - label_line_reserve);
+     int decoration_content_right = title_padding;
+ 
+     int mark_width = 0;
+@@ -903,7 +986,13 @@ draw_decoration_overlays:
+         const int line_margin_right = min(logical_px(4), max(0, deco_width / 2));
+         const int line_start = con->deco_rect.x +
+                                min(deco_width, decoration_content_right + line_gap);
+-        const int line_end = con->deco_rect.x + deco_width - line_margin_right;
++        const int decoration_right = con->deco_rect.x + deco_width;
++        const int line_right_limit = close_button_rect.width > 0
++                                         ? max((int)con->deco_rect.x,
++                                               (int)close_button_rect.x - logical_px(8))
++                                         : decoration_right - line_margin_right;
++        const int line_end = min(decoration_right - line_margin_right,
++                                 line_right_limit);
+         const int line_height = min(max(1, logical_px(3)),
+                                     (int)con->deco_rect.height);
+         const int line_y = con->deco_rect.y +
+@@ -913,6 +1002,9 @@ draw_decoration_overlays:
+                               max(0, line_end - line_start), line_height,
+                               (int)con->deco_rect.height);
+     }
++    draw_qubes_hud_close_button(dest_surface,
++                                draw_util_hex_to_color("#ff3b6b"),
++                                close_button_rect);
+ copy_pixmaps:
+     draw_util_copy_surface(&(con->frame_buffer), &(con->frame), 0, 0, 0, 0, con->rect.width, con->rect.height);
+ }

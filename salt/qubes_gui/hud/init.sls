@@ -7,7 +7,7 @@
 {% set desktop_home = user_info.get('home', '/home/' ~ desktop_user) if user_info else '/home/' ~ desktop_user %}
 {% set owner_marker = 'Managed by qubes-os-customization Salt formula' %}
 {% set hud_asset_marker = 'Qubes HUD managed file. Owner: salt/qubes_gui/hud.' %}
-{% set i3_hud_sha256 = '2dec876a423d73d3ab08912cc0487a0cd23a2112546a903a8467010b2d561721' %}
+{% set i3_hud_sha256 = '75c4d58ebbe3df3ae0c2ae22aa0f236cb6904529f66721c378366b3f47a4a127' %}
 {% set expected_i3_evr = '1000:4.25.1-1.fc41.x86_64' %}
 {% set expected_i3_settings_evr = '1.14-1.fc41' %}
 {% set release = grains.get('osrelease', '')|string %}

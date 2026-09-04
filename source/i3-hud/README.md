@@ -1,13 +1,13 @@
-# Trusted Qubes HUD i3 patch
+# Trusted Qubes HUD i3 patches
 
 This directory contains the complete provenance and build recipe for the
 separate `i3-hud` executable deployed by the HUD Salt state. It does not replace
 Fedora's `/usr/bin/i3`; the `qubes-hud` login session explicitly launches the
 separate binary, so the packaged Qubes i3 session remains a fallback.
 
-The patch keeps the frame in the dark navy/cyan HUD palette and draws a thin,
-rounded Qubes label-color line in every normal decoration. The line begins
-after the rendered title, fades from 4% label intensity there to 100% at the
+The trusted-label patch keeps the frame in the dark navy/cyan HUD palette and
+draws a thin, rounded Qubes label-color line in every normal decoration. The
+line begins after the rendered title, fades from 4% label intensity there to 100% at the
 right, and carries a restrained two-layer halo in the same trusted color. Its
 geometry is recalculated from the current decoration after every resize. A
 minimum segment is reserved so a long application title cannot hide the trust
@@ -16,6 +16,14 @@ cue. The line is painted by i3 in dom0 from gui-daemon's trusted
 painted by AppVM content. The existing `[qube-name]` prefix is retained.
 The trusted decoration also gives that prefix a 10-logical-pixel left inset so
 Picom's rounded window corner cannot clip its first glyph.
+
+Each normally decorated application window also has a compact alert-pink close
+button in a dedicated 26-logical-pixel region at the far right. The label line,
+including its halo, ends before that region, so the two trusted controls cannot
+overlap as the window is resized. Pressing and releasing the primary mouse
+button on the same close control requests a normal application close; `Alt+F4`
+is the keyboard fallback. A fullscreen or `BS_NONE` window has no decoration
+and therefore no button.
 
 For compatibility with older gui-daemon versions, a strictly parsed legacy
 label index selects a built-in canonical color. `BS_PIXEL` windows retain a
@@ -28,8 +36,9 @@ decorations for managed application windows.
 
 Build on the Fedora 41 dom0 development environment after installing i3's
 build requirements. The script downloads directly over HTTPS, verifies both
-pinned upstream inputs, applies the official Qubes patch and then the HUD patch,
-and uses Fedora's hardening flags:
+pinned upstream inputs and both local patches, applies the official Qubes
+patch, the trusted-label HUD patch, and then the close-button patch, and uses
+Fedora's hardening flags:
 
 ```bash
 ./source/i3-hud/build.sh

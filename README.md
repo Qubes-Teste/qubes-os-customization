@@ -57,6 +57,7 @@ Useful initial bindings:
 - `Windows-logo key+D`: application launcher
 - `Windows-logo key+Shift+D`: Qubes application menu
 - `Windows-logo key+Shift+E`: exit i3 and return to LightDM
+- `Alt+F4`: close the focused window
 
 ### Roll back to Xfce
 
@@ -99,13 +100,17 @@ opens a terminal in the currently focused qube.
 Qubes label colors remain visible as thin horizontal lines in normal window
 decorations. Each line starts just after the rendered title, fades from nearly
 transparent there to full label intensity at the right, carries a restrained
-same-color halo, and automatically resizes with the window. It is painted by a
-pinned, hardened i3 binary in dom0
-from gui-daemon's trusted label-color property; AppVM content cannot paint or
-reposition it. Picom intentionally composites each non-fullscreen window,
-including its Qubes frame and label line, at 30% transparency (70% opacity)
-with background blur, an external cyan halo, and an edge-weighted inner rim
-that fades toward the center. Fullscreen windows remain opaque. The packaged
+same-color halo, and automatically resizes with the window. A compact
+alert-pink close button has a dedicated region at the far right; the label line
+and its glow stop before that region and cannot overlap it. Click the button or
+press `Alt+F4` to close a window. The label line is painted by a pinned,
+hardened i3 binary in dom0 from gui-daemon's trusted label-color property. The
+close control is likewise part of i3's trusted decoration; AppVM content cannot
+paint or reposition either control. Picom intentionally composites each
+non-fullscreen window, including its Qubes frame and label line, at 30%
+transparency (70% opacity) with background blur, an external cyan halo, and an
+edge-weighted inner rim that fades toward the center. Fullscreen windows remain
+opaque. The packaged
 `/usr/bin/i3`, its login session, and Xfce all remain available as fallbacks.
 
 At HUD startup, the keyboard helper first restores the desktop user's saved
@@ -126,9 +131,11 @@ sudo qubesctl state.sls qubes_gui.hud saltenv=user
 
 The second HUD apply should report zero changes. Log out and choose
 **Qubes HUD (i3)**; the state never restarts the active desktop or LightDM.
+A fresh login is also required after custom-binary updates; an i3 config reload
+alone does not activate them.
 
 The custom binary is accepted only on the exact audited Qubes/Fedora i3 base
-and is verified by SHA-256 before use. Its complete source patch, pinned input
+and is verified by SHA-256 before use. Its complete source patches, pinned input
 hashes, build recipe, license, and reproducibility notes are under
 `source/i3-hud/`. See `salt/qubes_gui/hud/README.md` for collision handling and
 the exact platform pins.
@@ -141,9 +148,9 @@ sudo qubesctl state.sls qubes_gui.hud.rollback saltenv=user
 ```
 
 Real user-triggered fullscreen has no window-manager decoration and therefore
-no label line. Qubes' default gui-daemon policy rejects untrusted AppVM
-fullscreen requests; override-redirect windows keep gui-daemon's protected
-label border.
+no label line or close button. Qubes' default gui-daemon policy rejects
+untrusted AppVM fullscreen requests; override-redirect windows keep
+gui-daemon's protected label border.
 
 ## HUD application theme in TemplateVMs
 
