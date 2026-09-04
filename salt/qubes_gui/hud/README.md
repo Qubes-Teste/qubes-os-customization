@@ -101,8 +101,10 @@ decoration, so use the keyboard shortcut there.
 
 The state also owns the desktop user's Xfce Terminal profile so its normal and
 uncolored bold text uses `#19d3ff`. The HUD XSession selects Qt's GTK platform
-theme, allowing native Qt applications to consume the same standard palette at
-the next login.
+theme. Before starting XDG applications, the managed autostart helper publishes
+that setting to D-Bus and the systemd user manager as well. Native Qt tools
+launched directly or by Qubes' resident application menu therefore consume the
+same standard palette from the next login.
 
 Except for binary assets, every managed source must contain a recognized text
 ownership marker. Formula/session files use
@@ -171,3 +173,7 @@ HUD's package-ownership record proves that the formula installed it; otherwise
 Picom is left untouched. It leaves `rofi`, `feh`, and all packaged Qubes/i3
 components installed. If any target is no longer an owner-marked regular file,
 rollback refuses before making changes.
+
+The D-Bus activation environment cannot remove a published variable in place.
+After rollback from an active HUD session, log out normally to clear
+`QT_QPA_PLATFORMTHEME` and enter the restored packaged i3 session.

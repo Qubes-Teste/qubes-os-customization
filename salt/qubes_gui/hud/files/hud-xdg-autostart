@@ -6,6 +6,20 @@
 
 set -euo pipefail
 
+# Qubes' application menu is a systemd user service and launches dom0 Qt
+# applications itself. Seed both D-Bus and systemd activation before any XDG
+# autostart entry can start that service; exporting also covers direct children
+# of this helper. A failure must not prevent the rest of the desktop starting.
+export QT_QPA_PLATFORMTHEME=gtk3
+if [ ! -x /usr/bin/dbus-update-activation-environment ]; then
+    printf '%s\n' \
+        'Qubes HUD: D-Bus environment publisher is unavailable.' >&2
+elif ! /usr/bin/dbus-update-activation-environment \
+        --systemd QT_QPA_PLATFORMTHEME; then
+    printf '%s\n' \
+        'Qubes HUD: could not publish the Qt GTK palette environment.' >&2
+fi
+
 log() {
     [ "${DEBUG:-}" ] || return 0
     printf '%s\n' "$1" >&2

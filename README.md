@@ -91,7 +91,7 @@ matching toolkit style.
 Normal dom0 shell, toolkit, and terminal text uses the same `#19d3ff` cyan as
 the focused outer frame. Semantic selection, muted, disabled, and urgent text
 keeps distinct colors. Native Qt applications consume the GTK palette from a
-fresh HUD login.
+fresh HUD login, including applications launched by Qubes' systemd-backed menu.
 
 Tiled windows can be dragged directly by their title bars. Drop near the top,
 bottom, left, or right edge of another window to choose its tiled position;
