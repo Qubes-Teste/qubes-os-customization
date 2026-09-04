@@ -1,0 +1,3 @@
+/* Qubes HUD managed file. Owner: salt/qubes_gui/guest_hud. */
+@import url("resource:///org/gtk/libgtk/theme/Default/Default-dark.css");
+@import url("qubes-hud.css");

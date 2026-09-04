@@ -1,0 +1,6 @@
+# Qubes HUD managed file. Owner: salt/qubes_gui/guest_hud.
+/org/gnome/desktop/interface/gtk-theme
+/org/gnome/desktop/interface/color-scheme
+/org/gnome/desktop/interface/icon-theme
+/org/gnome/desktop/interface/font-name
+/org/gnome/desktop/interface/monospace-font-name

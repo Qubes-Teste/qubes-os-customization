@@ -1,0 +1,17 @@
+# Qubes HUD managed file. Owner: salt/qubes_gui/guest_hud.
+[Configuration]
+FontName=Noto Sans Mono 10
+ColorForeground=#d9faff
+ColorBackground=#02070c
+ColorCursor=#19d3ff
+ColorCursorUseDefault=FALSE
+ColorSelection=#116b86
+ColorSelectionUseDefault=FALSE
+ColorBold=#ffffff
+ColorBoldUseDefault=FALSE
+ColorPalette=#02070c;#ff3b6b;#4ee6a8;#e6d36a;#159dd1;#b58cff;#19d3ff;#d9faff;#116b86;#ff6b8e;#75ffc5;#fff08a;#4bcaff;#d0adff;#7deaff;#ffffff
+BackgroundMode=TERMINAL_BACKGROUND_SOLID
+BackgroundDarkness=1.000000
+MiscAlwaysShowTabs=FALSE
+MiscMenubarDefault=FALSE
+MiscToolbarDefault=FALSE

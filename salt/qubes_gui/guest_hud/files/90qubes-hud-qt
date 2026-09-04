@@ -1,0 +1,19 @@
+#!/bin/sh
+# Qubes HUD managed file. Owner: salt/qubes_gui/guest_hud.
+# Enforce Qt's GTK platform adapter when either supported Qt generation
+# provides it. This intentionally overrides an earlier session value.
+
+for qubes_hud_qgtk in \
+  /usr/lib/*/qt5/plugins/platformthemes/libqgtk3.so \
+  /usr/lib*/qt5/plugins/platformthemes/libqgtk3.so \
+  /usr/lib/*/qt6/plugins/platformthemes/libqgtk3.so \
+  /usr/lib*/qt6/plugins/platformthemes/libqgtk3.so
+do
+  if [ -f "${qubes_hud_qgtk}" ]; then
+    QT_QPA_PLATFORMTHEME=gtk3
+    export QT_QPA_PLATFORMTHEME
+    break
+  fi
+done
+
+unset qubes_hud_qgtk

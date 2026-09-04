@@ -27,6 +27,11 @@ From this repository in dom0:
 ./scripts/sync-salt-formula.sh
 ```
 
+The sync script verifies every formula entry point before touching the Salt
+tree. It records hashes for copied files so later Git revisions remove only
+stale files that are still byte-for-byte identical to the version it placed;
+a locally modified stale file is preserved and makes the sync stop.
+
 Render and dry-run it before applying:
 
 ```sh
@@ -78,8 +83,9 @@ references under `style_guide/`. It installs an exactly black background,
 maximum-intensity 48-pixel cyan glow, a translucent Rofi launcher, translucent
 Dunst notifications, and glossy dom0 GTK chrome. On the current 598-mm-wide
 reference display, the gap is approximately 10 mm; its physical size varies
-with display DPI. The HUD deliberately does not style AppVM application
-content or web pages.
+with display DPI. The dom0 HUD state deliberately does not style AppVM
+application content or web pages. The guest-template state below adds the
+matching toolkit style.
 
 Tiled windows can be dragged directly by their title bars. Drop near the top,
 bottom, left, or right edge of another window to choose its tiled position;
@@ -138,3 +144,47 @@ Real user-triggered fullscreen has no window-manager decoration and therefore
 no label line. Qubes' default gui-daemon policy rejects untrusted AppVM
 fullscreen requests; override-redirect windows keep gui-daemon's protected
 label border.
+
+## HUD application theme in TemplateVMs
+
+`qubes_gui.guest_hud` installs the application-facing HUD palette into a
+TemplateVM's persistent root filesystem. It provides a named GTK 2/3/4 theme,
+locked system Xfce and dconf defaults, matching fonts/icons and terminal
+colors, and Qt 5/6 GTK palette integration when that adapter is present. It
+does not touch TemplateVM or AppVM home directories.
+
+Retrofit an existing TemplateVM with a dry run followed by an apply:
+
+```sh
+./scripts/sync-salt-formula.sh
+sudo qubesctl --skip-dom0 --targets=debian-13-xfce \
+  state.sls qubes_gui.guest_hud saltenv=user test=True
+sudo qubesctl --skip-dom0 --targets=debian-13-xfce \
+  state.sls qubes_gui.guest_hud saltenv=user
+```
+
+Dependent qubes see root changes after they restart. On a machine where this
+template backs networking and management qubes, activate everything together
+at the next reboot instead of interrupting the current session.
+
+To generate a new themed TemplateVM, use the two-phase Salt wrapper:
+
+```sh
+./scripts/provision-hud-template.sh SOURCE_TEMPLATE TARGET_TEMPLATE
+```
+
+The source and target are runtime policy, so neither topology nor template
+names are embedded in the formula. Salt clones and tags the target first and
+then applies the guest state inside it; the wrapper succeeds only when both
+phases succeed and the result is a halted TemplateVM. The clone phase refuses
+to proceed while either the source or an already managed target is running;
+it does not stop them implicitly. Halt either TemplateVM before retrying. Once
+guest styling finishes, the wrapper cleanly shuts down the target and verifies
+that it is a halted TemplateVM before reporting success.
+
+The source argument is creation-time policy. If the target already carries
+the `hud-theme-managed` tag, Salt converges that target in place and does not
+re-clone it or claim that it came from the newly supplied source. Choose a new
+target name when changing source templates. See
+`salt/qubes_gui/guest_hud/README.md` for the exact scope, collision policy,
+validation, and rollback.

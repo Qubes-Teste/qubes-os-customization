@@ -1,0 +1,14 @@
+#!/bin/sh
+# Qubes HUD managed file. Owner: salt/qubes_gui/guest_hud.
+# This file is sourced by the graphical session; do not exit from it.
+
+qubes_hud_xdg_root=/etc/qubes-hud/xdg
+qubes_hud_xdg_dirs=${XDG_CONFIG_DIRS:-/etc/xdg}
+
+case ":${qubes_hud_xdg_dirs}:" in
+  *":${qubes_hud_xdg_root}:"*) ;;
+  *) XDG_CONFIG_DIRS="${qubes_hud_xdg_root}:${qubes_hud_xdg_dirs}" ;;
+esac
+
+export XDG_CONFIG_DIRS
+unset qubes_hud_xdg_root qubes_hud_xdg_dirs

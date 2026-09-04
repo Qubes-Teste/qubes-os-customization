@@ -1,5 +1,5 @@
 /* Qubes HUD managed file. Owner: salt/qubes_gui/hud.
- * Dom0 toolkit chrome only; this does not style browser or AppVM content. */
+ * Shared GTK 4 overlay for dom0 and guest templates; web content is separate. */
 
 @define-color hud_root #000000;
 @define-color hud_bg #02070c;
