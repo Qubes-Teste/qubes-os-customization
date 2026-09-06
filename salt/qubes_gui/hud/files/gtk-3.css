@@ -15,7 +15,7 @@
 @define-color hud_text_dim #7bb9c7;
 @define-color hud_alert #ff3b6b;
 
-/* Standard GTK names also feed Qt's GTK platform-theme palette. */
+/* Standard GTK names keep conventional GTK palette roles available. */
 @define-color theme_bg_color @hud_bg;
 @define-color theme_base_color @hud_bg;
 @define-color theme_fg_color @hud_text;
@@ -26,6 +26,36 @@
 @define-color theme_unfocused_fg_color @hud_text_dim;
 @define-color insensitive_bg_color @hud_surface;
 @define-color insensitive_fg_color @hud_text_dim;
+
+/* Prefer recolorable glyphs and collapse symbolic roles into the HUD palette. */
+* {
+  -gtk-icon-style: symbolic;
+  -gtk-icon-palette: success @hud_cyan, warning @hud_cyan, error @hud_alert;
+}
+
+image {
+  color: @hud_cyan;
+}
+
+image:disabled {
+  color: @hud_cyan_dim;
+}
+
+image.error,
+image.destructive-action,
+.error image,
+.destructive-action image {
+  color: @hud_alert;
+}
+
+button:active image,
+button:checked image,
+.button:active image,
+.button:checked image,
+row:selected image,
+.view:selected image {
+  color: @hud_root;
+}
 
 window.background,
 dialog.background,

@@ -8,9 +8,26 @@
   'session_directories': []
 } %}
 {% if grains.get('os_family', '') == 'Debian' %}
+  {# qt5ct is deliberately limited to installed Whonix PyQt5 targets. Its
+     palette is selected only by the Sdwdate service tree and the package's
+     standalone Tor Control Panel launcher; do not pull Qt or qt5ct into
+     ordinary templates. #}
+  {% set debian_has_pyqt5 = true
+      if salt['pkg.version']('python3-pyqt5') else false %}
+  {% set debian_sdwdate_qt5ct = true
+      if debian_has_pyqt5 and salt['pkg.version']('sdwdate-gui') else false %}
+  {% set debian_tor_control_panel_qt5ct = true
+      if debian_has_pyqt5 and salt['pkg.version']('tor-control-panel') else false %}
+  {% set debian_qt5ct = debian_sdwdate_qt5ct
+      or debian_tor_control_panel_qt5ct %}
   {% set guest_hud_platform = {
     'supported': true,
-    'packages': ['dconf-cli', 'fonts-noto-core', 'fonts-noto-mono'],
+    'packages': ['dconf-cli', 'fonts-noto-core', 'fonts-noto-mono',
+                 'kf6-breeze-icon-theme']
+                + (['qt5ct'] if debian_qt5ct else []),
+    'qt5ct': debian_qt5ct,
+    'sdwdate_qt5ct': debian_sdwdate_qt5ct,
+    'tor_control_panel_qt5ct': debian_tor_control_panel_qt5ct,
     'early_session': '/etc/X11/Xsession.d/59qubes-hud-xdg',
     'late_session': '/etc/X11/Xsession.d/90qubes-hud-qt',
     'session_mode': '0644',
@@ -20,7 +37,8 @@
   {% set guest_hud_platform = {
     'supported': true,
     'packages': ['dconf', 'google-noto-sans-vf-fonts',
-                 'google-noto-sans-mono-vf-fonts'],
+                 'google-noto-sans-mono-vf-fonts',
+                 'breeze-icon-theme'],
     'early_session': '/etc/X11/xinit/xinitrc.d/59-qubes-hud-xdg.sh',
     'late_session': '/etc/X11/xinit/xinitrc.d/90-qubes-hud-qt.sh',
     'session_mode': '0755',

@@ -11,8 +11,8 @@ The formula:
 
 - refuses to run outside Qubes 4.3 dom0;
 - installs `i3` and `i3-settings-qubes` from signed repositories;
-- automatically uses direct DNF when dom0 has a direct IPv4 default route;
-- otherwise uses Qubes' native Salt package provider and UpdateVM path;
+- keeps dom0 offline and uses Qubes' native Salt package provider and UpdateVM
+  path by default;
 - manages a deterministic user config without running `i3-config-wizard`;
 - uses the Windows-logo key (`Mod4`) as the i3 modifier;
 - makes i3 the default for the next LightDM login without restarting the
@@ -31,6 +31,13 @@ The sync script verifies every formula entry point before touching the Salt
 tree. It records hashes for copied files so later Git revisions remove only
 stale files that are still byte-for-byte identical to the version it placed;
 a locally modified stale file is preserved and makes the sync stop.
+
+Deployment uses only files in this repository and software supplied by the
+configured Qubes repositories. Dom0 remains offline: missing signed RPMs are
+obtained through its UpdateVM. The Python management helpers use only the
+Python standard library already present in Qubes dom0; Salt installs no pip
+modules and does not run the networked maintainer rebuild under
+`source/i3-hud/`.
 
 Render and dry-run it before applying:
 
@@ -74,7 +81,8 @@ Then log out and select Xfce if LightDM has remembered another per-user choice.
 
 Defaults are defined in `salt/qubes_gui/i3/init.sls`. The supported pillar
 keys are shown in `salt/pillar.example.sls`. The package transport defaults to
-`auto`; use a pillar override only when route-based detection is inappropriate.
+`qubes-updatevm`, so a fresh deployment never assumes direct dom0 Internet.
+`auto` and `direct-dom0` remain explicit development overrides.
 
 ## HUD desktop shell
 
@@ -90,8 +98,37 @@ matching toolkit style.
 
 Normal dom0 shell, toolkit, and terminal text uses the same `#19d3ff` cyan as
 the focused outer frame. Semantic selection, muted, disabled, and urgent text
-keeps distinct colors. Native Qt applications consume the GTK palette from a
-fresh HUD login, including applications launched by Qubes' systemd-backed menu.
+keeps distinct colors. GTK styling does not by itself recolor Qt widget
+palettes; the narrowly scoped Whonix Qt exception is described below.
+GTK, Rofi, and Dunst explicitly select the locally generated
+`Qubes-HUD-Cyan` icon theme. It derives thin monochrome and symbolic geometry
+from KDE Breeze Dark and fixes generic actions, status, devices, places, MIME
+types, emblems, small categories, and notification glyph foregrounds to the
+exact same `#19d3ff`. The generated tree occupies roughly 70 MiB on each root filesystem
+where it is installed. It is built locally from the distribution's KDE Breeze
+Dark package (`breeze-icon-theme` on Fedora and `kf6-breeze-icon-theme` on
+Debian) and retains Breeze's upstream LGPL/CC-BY-SA licensing.
+
+Application-icon directories are deliberately excluded. The theme inherits
+from Adwaita, hicolor, and Breeze Dark, so application logos and Qubes VM
+class, label, security, and Qubes-specific warning icons retain their original
+identity and colors. Neutral Qubes tray concepts such as clipboard, domains,
+disks, devices, and updates receive thin cyan aliases. Targeted regular
+NetworkManager wired, disconnected, Wi-Fi signal, and secure status files use
+thin cyan glyphs. Pixels supplied directly by an application remain outside
+icon-theme lookup.
+
+Guest XEmbed tray icons use Qubes' supported `border1` rendering mode in the
+HUD. This keeps the guest's source pixels intact and retains a one-pixel
+trusted VM-label border instead of recoloring the complete glyph to the VM
+label. Legacy 24-bit XEmbed source surfaces have no alpha and were observed
+compositing transparent icon pixels onto a light-gray `#f0f0f0` background
+before dom0 received them, so the targeted regular NetworkManager states,
+including secure variants, and Sdwdate/Tor tray glyphs are precomposed onto
+exact black. Per-qube tray-mode
+features still take precedence. Existing GUI daemon connections pick up the
+GuiVM-wide default at their next start; the state does not restart running
+networking or anonymity qubes.
 
 Tiled windows can be dragged directly by their title bars. Drop near the top,
 bottom, left, or right edge of another window to choose its tiled position;
@@ -162,11 +199,27 @@ gui-daemon's protected label border.
 
 `qubes_gui.guest_hud` installs the application-facing HUD palette into a
 TemplateVM's persistent root filesystem. It provides a named GTK 2/3/4 theme,
-locked system Xfce and dconf defaults, matching fonts/icons and terminal
-colors, and Qt 5/6 GTK palette integration when that adapter is present. It
-does not touch TemplateVM or AppVM home directories.
+locked system Xfce and dconf defaults, matching fonts, the generated thin
+`Qubes-HUD-Cyan` icon theme and terminal colors. On Debian-family templates
+that already contain Whonix's PyQt5 applications, it installs `qt5ct` and
+applies a root-owned black/cyan Qt palette to the Sdwdate user-service tree and
+to the package's standalone Tor Control Panel launcher. The two narrow launch
+scopes prevent `qt5ct` from creating a per-user configuration copy and do not
+redirect `XDG_CONFIG_HOME` for the desktop session. Whonix's six
+package-owned Sdwdate/Tor status tray images are replaced package-safely with
+thin semantic glyphs on exact-black canvases: cyan for healthy/busy, amber for
+Tor warning, and pink-red for stopped/error. It does not touch TemplateVM or
+AppVM home directories.
 The default application and terminal foreground is the focused-frame cyan
 `#19d3ff` on every supported template family.
+
+Icon themes affect icons requested by name. Other app-supplied pixels remain
+outside that mechanism, including absolute Qubes application-menu icon paths,
+web-page icons, thumbnails, and `_NET_WM_ICON` title-bar images. Those are left
+untouched; the narrowly managed Sdwdate tray-status set is the exception.
+The Tor launcher wrapper changes only toolkit environment selection and leaves
+the package's icon and application content intact.
+Trusted Qubes label colors remain unchanged.
 
 Retrofit an existing TemplateVM with a dry run followed by an apply:
 
@@ -178,9 +231,10 @@ sudo qubesctl --skip-dom0 --targets=debian-13-xfce \
   state.sls qubes_gui.guest_hud saltenv=user
 ```
 
-Dependent qubes see root changes after they restart. On a machine where this
-template backs networking and management qubes, activate everything together
-at the next reboot instead of interrupting the current session.
+The state never restarts dependent AppVMs or DispVMs. They see the template
+root changes the next time they start; on a machine where this template backs
+networking and management qubes, activate everything together at the next
+reboot instead of interrupting the current session.
 
 To generate a new themed TemplateVM, use the two-phase Salt wrapper:
 

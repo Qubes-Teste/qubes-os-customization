@@ -27,6 +27,34 @@
 @define-color insensitive_bg_color @hud_surface;
 @define-color insensitive_fg_color @hud_text_dim;
 
+/* Prefer recolorable glyphs and collapse symbolic roles into the HUD palette. */
+* {
+  -gtk-icon-style: symbolic;
+  -gtk-icon-palette: success @hud_cyan, warning @hud_cyan, error @hud_alert;
+}
+
+image {
+  color: @hud_cyan;
+}
+
+image:disabled {
+  color: @hud_cyan_dim;
+}
+
+image.error,
+image.destructive-action,
+.error image,
+.destructive-action image {
+  color: @hud_alert;
+}
+
+button:active image,
+button:checked image,
+row:selected image,
+.view:selected image {
+  color: @hud_root;
+}
+
 window,
 window.background,
 dialog {

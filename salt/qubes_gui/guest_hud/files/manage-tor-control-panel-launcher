@@ -1,0 +1,1066 @@
+#!/usr/bin/python3
+# Qubes HUD managed file. Owner: salt/qubes_gui/guest_hud.
+"""Safely scope the Qubes HUD Qt palette to Tor Control Panel launches."""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import stat
+import subprocess
+import sys
+import tempfile
+
+
+PACKAGE = "tor-control-panel"
+QT5CT_PACKAGE = "qt5ct"
+TARGET = Path("/usr/libexec/tor-control-panel/tor-control-panel")
+DIVERTED = TARGET.with_name(TARGET.name + ".qubes-hud-original")
+LIBEXEC_ROOT = Path("/usr/libexec")
+QT5_PLUGIN_ROOT = Path("/usr/lib")
+CONFIG_ROOT = Path("/etc/qubes-hud")
+CONFIG_OWNER = CONFIG_ROOT / ".salt-owner"
+QT5CT_ROOT = CONFIG_ROOT / "xdg/qt5ct"
+QT5CT_COLORS_ROOT = QT5CT_ROOT / "colors"
+QT5CT_CONFIG = QT5CT_ROOT / "qt5ct.conf"
+QT5CT_PALETTE = QT5CT_COLORS_ROOT / "qubes-hud.conf"
+RECORD = CONFIG_ROOT / "tor-control-panel-launcher.owner"
+LOCK = Path("/run/lock/qubes-hud-tor-control-panel-launcher.lock")
+DPKG_QUERY = Path("/usr/bin/dpkg-query")
+DPKG_DIVERT = Path("/usr/bin/dpkg-divert")
+OWNER_MARKER = "Qubes HUD managed file. Owner: salt/qubes_gui/guest_hud."
+MANAGER_NAME = "manage-tor-control-panel-launcher"
+RECORD_SCHEMA = 1
+WRAPPER_REVISION = 1
+QT5CT_CONFIG_SHA256 = (
+    "f73712ed8a5d294f9fec8701af17f8cc3e72720d68a11c158810a081b144cd33"
+)
+QT5CT_PALETTE_SHA256 = (
+    "28646a52ea6051d1924eda1daf4d283f5d1fc90ed15536dd8a6f007a974831f1"
+)
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
+MD5_RE = re.compile(r"[0-9a-f]{32}")
+
+
+class LauncherError(RuntimeError):
+    """A refusal caused by unsafe ownership or inconsistent package state."""
+
+
+@dataclass(frozen=True)
+class PackageSnapshot:
+    """The installed version, path list, and hashes declared by dpkg."""
+
+    name: str
+    version: str
+    md5s: dict[str, str]
+    paths: frozenset[str]
+
+
+def _wrapper_bytes() -> bytes:
+    diverted = shlex.quote(str(DIVERTED))
+    return (
+        "#!/bin/sh\n"
+        f"# {OWNER_MARKER}\n"
+        "export QT_QPA_PLATFORMTHEME=qt5ct\n"
+        "export XDG_CONFIG_HOME=/etc/qubes-hud/xdg\n"
+        f'exec {diverted} "$@"\n'
+    ).encode("utf-8")
+
+
+def _digest(path: Path, algorithm: str = "sha256") -> str:
+    if algorithm == "md5":
+        digest = hashlib.md5(usedforsecurity=False)
+    else:
+        digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _bytes_sha256(contents: bytes) -> str:
+    return hashlib.sha256(contents).hexdigest()
+
+
+def _run(
+    arguments: list[str], *, allowed: tuple[int, ...] = (0,)
+) -> subprocess.CompletedProcess[str]:
+    environment = os.environ.copy()
+    environment["LC_ALL"] = "C"
+    try:
+        result = subprocess.run(
+            arguments,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+        )
+    except FileNotFoundError as error:
+        raise LauncherError(f"required command is missing: {arguments[0]}") from error
+    if result.returncode not in allowed:
+        diagnostic = result.stderr.strip() or result.stdout.strip() or "no diagnostic"
+        raise LauncherError(
+            f"command failed ({result.returncode}): {' '.join(arguments)}: {diagnostic}"
+        )
+    return result
+
+
+def _assert_real_directory(path: Path, mode: int | None = None) -> os.stat_result:
+    try:
+        path_stat = path.lstat()
+    except FileNotFoundError as error:
+        raise LauncherError(f"required directory is missing: {path}") from error
+    if stat.S_ISLNK(path_stat.st_mode) or not stat.S_ISDIR(path_stat.st_mode):
+        raise LauncherError(f"path is not a real directory: {path}")
+    if path_stat.st_uid != 0 or path_stat.st_gid != 0:
+        raise LauncherError(f"directory is not owned by root:root: {path}")
+    if mode is not None and stat.S_IMODE(path_stat.st_mode) != mode:
+        raise LauncherError(f"directory mode is not {mode:04o}: {path}")
+    if path_stat.st_nlink < 2:
+        raise LauncherError(f"directory link count is unsafe: {path}")
+    return path_stat
+
+
+def _assert_regular_file(
+    path: Path, *, mode: int, allow_missing: bool = False
+) -> os.stat_result | None:
+    try:
+        path_stat = path.lstat()
+    except FileNotFoundError:
+        if allow_missing:
+            return None
+        raise LauncherError(f"required file is missing: {path}") from None
+    if stat.S_ISLNK(path_stat.st_mode) or not stat.S_ISREG(path_stat.st_mode):
+        raise LauncherError(f"path is not a regular file: {path}")
+    if path_stat.st_uid != 0 or path_stat.st_gid != 0:
+        raise LauncherError(f"file is not owned by root:root: {path}")
+    if stat.S_IMODE(path_stat.st_mode) != mode:
+        raise LauncherError(f"file mode is not {mode:04o}: {path}")
+    if path_stat.st_nlink != 1:
+        raise LauncherError(f"file has unexpected hard links: {path}")
+    return path_stat
+
+
+def _assert_formula_namespace() -> None:
+    _assert_real_directory(CONFIG_ROOT, 0o755)
+    _assert_regular_file(CONFIG_OWNER, mode=0o644)
+    try:
+        owner_text = CONFIG_OWNER.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise LauncherError(f"cannot read formula ownership marker: {CONFIG_OWNER}") from error
+    if OWNER_MARKER not in owner_text:
+        raise LauncherError(f"formula ownership marker is invalid: {CONFIG_OWNER}")
+
+
+def _assert_launcher_namespace(*, required: bool = True) -> bool:
+    """Prove that every parent used for the launcher mutation is real."""
+    for ancestor in (Path("/"), Path("/usr"), LIBEXEC_ROOT):
+        _assert_real_directory(ancestor)
+    try:
+        TARGET.parent.lstat()
+    except FileNotFoundError:
+        if required:
+            raise LauncherError(f"required directory is missing: {TARGET.parent}") from None
+        return False
+    _assert_real_directory(TARGET.parent, 0o755)
+    return True
+
+
+def _dpkg_tools_available(*, required: bool = False) -> bool:
+    statuses: list[tuple[Path, os.stat_result | None]] = []
+    for tool in (DPKG_QUERY, DPKG_DIVERT):
+        try:
+            tool_stat = tool.lstat()
+        except FileNotFoundError:
+            tool_stat = None
+        statuses.append((tool, tool_stat))
+    present = [tool_stat is not None for _, tool_stat in statuses]
+    if not any(present):
+        if required:
+            raise LauncherError("Debian package tools are unavailable")
+        return False
+    if not all(present):
+        raise LauncherError("Debian package tool installation is incomplete")
+    for tool, tool_stat in statuses:
+        assert tool_stat is not None
+        if stat.S_ISLNK(tool_stat.st_mode) or not stat.S_ISREG(tool_stat.st_mode):
+            raise LauncherError(f"package tool is not a regular file: {tool}")
+        if tool_stat.st_uid != 0 or tool_stat.st_gid != 0:
+            raise LauncherError(f"package tool is not owned by root:root: {tool}")
+        if tool_stat.st_nlink != 1 or stat.S_IMODE(tool_stat.st_mode) & 0o022:
+            raise LauncherError(f"package tool metadata is unsafe: {tool}")
+        if not os.access(tool, os.X_OK):
+            raise LauncherError(f"package tool is not executable: {tool}")
+    return True
+
+
+def _package_snapshot(name: str, *, required: bool) -> PackageSnapshot | None:
+    if not _dpkg_tools_available(required=required):
+        return None
+    query = _run(
+        [str(DPKG_QUERY), "-W", "-f=${db:Status-Status}\t${Version}\n", name],
+        allowed=(0, 1),
+    )
+    if query.returncode == 1:
+        if query.stdout.strip():
+            raise LauncherError(f"unexpected dpkg-query output for {name}")
+        if required:
+            raise LauncherError(f"required package is not installed: {name}")
+        return None
+    fields = query.stdout.rstrip("\n").split("\t")
+    if len(fields) != 2 or fields[0] != "installed" or not fields[1]:
+        if required:
+            raise LauncherError(f"required package is not installed: {name}")
+        return None
+    if "\n" in fields[1]:
+        raise LauncherError(f"invalid package version for {name}")
+
+    listing = _run([str(DPKG_QUERY), "-L", name])
+    package_paths = frozenset(listing.stdout.splitlines())
+    control = _run([str(DPKG_QUERY), "--control-path", name, "md5sums"])
+    control_name = control.stdout.strip()
+    if not control_name or "\n" in control_name:
+        raise LauncherError(f"could not resolve {name}'s md5sums file")
+    control_path = Path(control_name)
+    _assert_regular_file(control_path, mode=0o644)
+    try:
+        lines = control_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as error:
+        raise LauncherError(f"cannot read package hashes: {control_path}") from error
+    md5s: dict[str, str] = {}
+    for line in lines:
+        parts = line.split(None, 1)
+        if len(parts) != 2 or MD5_RE.fullmatch(parts[0]) is None:
+            raise LauncherError(f"invalid entry in package hash file: {control_path}")
+        relative = parts[1].removeprefix("./")
+        if relative in md5s:
+            raise LauncherError(f"duplicate entry in package hash file: {relative}")
+        md5s[relative] = parts[0]
+    return PackageSnapshot(name, fields[1], md5s, package_paths)
+
+
+def _package_owns_target(snapshot: PackageSnapshot) -> bool:
+    relative = str(TARGET).removeprefix("/")
+    listed = str(TARGET) in snapshot.paths
+    hashed = relative in snapshot.md5s
+    if listed != hashed:
+        raise LauncherError(f"{PACKAGE} file listing and hashes disagree for {TARGET}")
+    return listed
+
+
+def _require_package_target(snapshot: PackageSnapshot) -> None:
+    if not _package_owns_target(snapshot):
+        raise LauncherError(
+            f"{PACKAGE} no longer provides {TARGET}; run remove to restore "
+            "forward-compatible package state"
+        )
+
+
+def _validate_package_target(path: Path, snapshot: PackageSnapshot) -> str:
+    _assert_launcher_namespace()
+    _require_package_target(snapshot)
+    _assert_regular_file(path, mode=0o755)
+    expected_md5 = snapshot.md5s[str(TARGET).removeprefix("/")]
+    if _digest(path, "md5") != expected_md5:
+        raise LauncherError(f"package-owned content hash changed: {path}")
+    return _digest(path)
+
+
+def _assert_path_below(path: Path, root: Path) -> None:
+    try:
+        path.relative_to(root)
+    except ValueError as error:
+        raise LauncherError(f"package path escapes expected root: {path}") from error
+    current = path.parent
+    parents: list[Path] = []
+    while current != root:
+        parents.append(current)
+        current = current.parent
+    _assert_real_directory(root)
+    for parent in reversed(parents):
+        _assert_real_directory(parent)
+
+
+def _validate_qt5ct_plugin(snapshot: PackageSnapshot) -> None:
+    suffix = "/qt5/plugins/platformthemes/libqt5ct.so"
+    listed = {
+        path
+        for path in snapshot.paths
+        if path.startswith(str(QT5_PLUGIN_ROOT) + "/") and path.endswith(suffix)
+    }
+    hashed = {
+        "/" + path
+        for path in snapshot.md5s
+        if ("/" + path).startswith(str(QT5_PLUGIN_ROOT) + "/")
+        and ("/" + path).endswith(suffix)
+    }
+    if listed != hashed:
+        raise LauncherError(f"{QT5CT_PACKAGE} plugin listing and hashes disagree")
+    if not listed:
+        raise LauncherError(f"{QT5CT_PACKAGE} does not provide its Qt 5 platform plugin")
+    for plugin_name in sorted(listed):
+        plugin = Path(plugin_name)
+        _assert_path_below(plugin, QT5_PLUGIN_ROOT)
+        _assert_regular_file(plugin, mode=0o644)
+        expected_md5 = snapshot.md5s[plugin_name.removeprefix("/")]
+        if _digest(plugin, "md5") != expected_md5:
+            raise LauncherError(f"package-owned plugin content changed: {plugin}")
+
+
+def _validate_managed_file(path: Path, expected_sha256: str) -> None:
+    _assert_regular_file(path, mode=0o644)
+    if _digest(path) != expected_sha256:
+        raise LauncherError(f"managed Qt configuration content changed: {path}")
+    try:
+        contents = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise LauncherError(f"cannot read managed Qt configuration: {path}") from error
+    if OWNER_MARKER not in contents:
+        raise LauncherError(f"managed Qt configuration marker is invalid: {path}")
+
+
+def _validate_prerequisites() -> None:
+    _assert_formula_namespace()
+    _assert_real_directory(CONFIG_ROOT / "xdg", 0o755)
+    _assert_real_directory(QT5CT_ROOT, 0o755)
+    _assert_real_directory(QT5CT_COLORS_ROOT, 0o755)
+    _validate_managed_file(QT5CT_CONFIG, QT5CT_CONFIG_SHA256)
+    _validate_managed_file(QT5CT_PALETTE, QT5CT_PALETTE_SHA256)
+    qt5ct = _package_snapshot(QT5CT_PACKAGE, required=True)
+    assert qt5ct is not None
+    _validate_qt5ct_plugin(qt5ct)
+
+
+def _diversion() -> str:
+    _dpkg_tools_available(required=True)
+    owner = _run([str(DPKG_DIVERT), "--listpackage", str(TARGET)]).stdout.rstrip("\n")
+    true_name = _run([str(DPKG_DIVERT), "--truename", str(TARGET)]).stdout.rstrip("\n")
+    if "\n" in owner or "\n" in true_name:
+        raise LauncherError(f"ambiguous diversion metadata for {TARGET}")
+    if not owner and true_name == str(TARGET):
+        return "absent"
+    if owner == "LOCAL" and true_name == str(DIVERTED):
+        return "managed"
+    raise LauncherError(
+        f"foreign or unexpected diversion for {TARGET}: "
+        f"owner={owner or '<none>'}, target={true_name or '<none>'}"
+    )
+
+
+def _add_diversion() -> None:
+    _assert_launcher_namespace()
+    _run(
+        [
+            str(DPKG_DIVERT),
+            "--local",
+            "--divert",
+            str(DIVERTED),
+            "--rename",
+            "--add",
+            str(TARGET),
+        ]
+    )
+
+
+def _add_diversion_metadata() -> None:
+    _assert_launcher_namespace()
+    _run(
+        [
+            str(DPKG_DIVERT),
+            "--local",
+            "--divert",
+            str(DIVERTED),
+            "--no-rename",
+            "--add",
+            str(TARGET),
+        ]
+    )
+
+
+def _remove_diversion() -> None:
+    _assert_launcher_namespace()
+    _run(
+        [
+            str(DPKG_DIVERT),
+            "--local",
+            "--divert",
+            str(DIVERTED),
+            "--rename",
+            "--remove",
+            str(TARGET),
+        ]
+    )
+
+
+def _remove_diversion_metadata() -> None:
+    _assert_launcher_namespace(required=False)
+    _run(
+        [
+            str(DPKG_DIVERT),
+            "--local",
+            "--divert",
+            str(DIVERTED),
+            "--no-rename",
+            "--remove",
+            str(TARGET),
+        ]
+    )
+
+
+def _validate_hash(value: object, field: str) -> str:
+    if not isinstance(value, str) or SHA256_RE.fullmatch(value) is None:
+        raise LauncherError(f"ownership record has invalid {field}")
+    return value
+
+
+def _validate_record_data(value: object) -> dict[str, object]:
+    expected = {
+        "schema",
+        "owner",
+        "manager",
+        "phase",
+        "wrapper_revision",
+        "desired_revision",
+        "package",
+        "package_version",
+        "target",
+        "diverted",
+        "managed_sha256",
+        "desired_sha256",
+        "original_sha256",
+    }
+    if not isinstance(value, dict) or set(value) != expected:
+        raise LauncherError("Tor Control Panel ownership record has an invalid schema")
+    if (
+        type(value["schema"]) is not int
+        or value["schema"] != RECORD_SCHEMA
+        or value["owner"] != OWNER_MARKER
+    ):
+        raise LauncherError("Tor Control Panel ownership record is not formula-owned")
+    if (
+        value["manager"] != MANAGER_NAME
+        or value["package"] != PACKAGE
+        or value["target"] != str(TARGET)
+        or value["diverted"] != str(DIVERTED)
+    ):
+        raise LauncherError("Tor Control Panel ownership record targets unexpected paths")
+    if value["phase"] not in ("installing", "installed", "removing"):
+        raise LauncherError("Tor Control Panel ownership record has an invalid phase")
+    if type(value["wrapper_revision"]) is not int or value["wrapper_revision"] < 1:
+        raise LauncherError("ownership record has an invalid wrapper revision")
+    desired_revision = value["desired_revision"]
+    if desired_revision is not None and (
+        type(desired_revision) is not int or desired_revision < 1
+    ):
+        raise LauncherError("ownership record has an invalid desired revision")
+    if not isinstance(value["package_version"], str) or not value["package_version"]:
+        raise LauncherError("ownership record has an invalid package version")
+    if "\n" in value["package_version"]:
+        raise LauncherError("ownership record has an invalid package version")
+    _validate_hash(value["managed_sha256"], "managed hash")
+    _validate_hash(value["original_sha256"], "original hash")
+    desired_sha = value["desired_sha256"]
+    if desired_sha is not None:
+        _validate_hash(desired_sha, "desired hash")
+    if (desired_revision is None) != (desired_sha is None):
+        raise LauncherError("ownership record has incomplete desired-wrapper fields")
+    if value["phase"] == "installed" and desired_revision is not None:
+        raise LauncherError("installed ownership record cannot have a pending wrapper")
+    if value["phase"] == "installing" and desired_revision is None:
+        raise LauncherError("installing ownership record lacks a pending wrapper")
+    return value
+
+
+def _load_record() -> dict[str, object] | None:
+    try:
+        record_stat = RECORD.lstat()
+    except FileNotFoundError:
+        return None
+    if stat.S_ISLNK(record_stat.st_mode) or not stat.S_ISREG(record_stat.st_mode):
+        raise LauncherError(f"ownership record is not a regular file: {RECORD}")
+    if (
+        stat.S_IMODE(record_stat.st_mode) != 0o644
+        or record_stat.st_uid != 0
+        or record_stat.st_gid != 0
+        or record_stat.st_nlink != 1
+    ):
+        raise LauncherError(f"ownership record metadata changed: {RECORD}")
+    try:
+        data = json.loads(RECORD.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise LauncherError(f"cannot parse ownership record: {RECORD}") from error
+    return _validate_record_data(data)
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _write_record(
+    data: dict[str, object], *, launcher_namespace_required: bool = True
+) -> None:
+    _validate_record_data(data)
+    _assert_formula_namespace()
+    _assert_launcher_namespace(required=launcher_namespace_required)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{RECORD.name}.", dir=CONFIG_ROOT)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            json.dump(data, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, 0o644)
+        os.chown(temporary, 0, 0)
+        os.replace(temporary, RECORD)
+        _fsync_directory(CONFIG_ROOT)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _remove_record() -> None:
+    try:
+        RECORD.unlink()
+    except FileNotFoundError:
+        return
+    _fsync_directory(CONFIG_ROOT)
+
+
+def _atomic_move(source: Path, destination: Path) -> None:
+    _assert_launcher_namespace()
+    if destination.exists() or destination.is_symlink():
+        raise LauncherError(f"refusing to replace existing recovery target: {destination}")
+    os.replace(source, destination)
+    _fsync_directory(TARGET.parent)
+
+
+def _atomic_wrapper_write(contents: bytes) -> None:
+    _assert_launcher_namespace()
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{TARGET.name}.qubes-hud.", dir=TARGET.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(contents)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, 0o755)
+        os.chown(temporary, 0, 0)
+        os.replace(temporary, TARGET)
+        _fsync_directory(TARGET.parent)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _wrapper_hash(accepted: set[str], *, allow_missing: bool = False) -> str | None:
+    _assert_launcher_namespace()
+    target_stat = _assert_regular_file(TARGET, mode=0o755, allow_missing=allow_missing)
+    if target_stat is None:
+        return None
+    actual = _digest(TARGET)
+    if actual not in accepted:
+        raise LauncherError(f"managed Tor Control Panel wrapper changed: {TARGET}")
+    return actual
+
+
+def _original_hash(
+    snapshot: PackageSnapshot | None,
+    recorded_sha256: str,
+    *,
+    allow_missing_without_package: bool,
+) -> str | None:
+    _assert_launcher_namespace()
+    if snapshot is not None and _package_owns_target(snapshot):
+        return _validate_package_target(DIVERTED, snapshot)
+    original_stat = _assert_regular_file(
+        DIVERTED, mode=0o755, allow_missing=allow_missing_without_package
+    )
+    if original_stat is None:
+        return None
+    actual = _digest(DIVERTED)
+    if actual != recorded_sha256:
+        raise LauncherError(f"diverted package launcher changed: {DIVERTED}")
+    return actual
+
+
+def _new_record(
+    snapshot: PackageSnapshot, original_sha256: str, desired_sha256: str
+) -> dict[str, object]:
+    return {
+        "schema": RECORD_SCHEMA,
+        "owner": OWNER_MARKER,
+        "manager": MANAGER_NAME,
+        "phase": "installing",
+        "wrapper_revision": WRAPPER_REVISION,
+        "desired_revision": WRAPPER_REVISION,
+        "package": PACKAGE,
+        "package_version": snapshot.version,
+        "target": str(TARGET),
+        "diverted": str(DIVERTED),
+        "managed_sha256": desired_sha256,
+        "desired_sha256": desired_sha256,
+        "original_sha256": original_sha256,
+    }
+
+
+def _accepted_wrapper_hashes(record: dict[str, object]) -> set[str]:
+    accepted = {record["managed_sha256"]}
+    if record["desired_sha256"] is not None:
+        accepted.add(record["desired_sha256"])
+    return accepted
+
+
+def _preflight_unmanaged(snapshot: PackageSnapshot | None) -> None:
+    namespace_present = _assert_launcher_namespace(
+        required=snapshot is not None and _package_owns_target(snapshot)
+    )
+    has_dpkg = _dpkg_tools_available()
+    if has_dpkg and _diversion() != "absent":
+        raise LauncherError(f"unowned diversion already exists for {TARGET}")
+    if namespace_present and (DIVERTED.exists() or DIVERTED.is_symlink()):
+        raise LauncherError(f"unowned diversion backup already exists: {DIVERTED}")
+    package_owns = snapshot is not None and _package_owns_target(snapshot)
+    if not namespace_present:
+        return
+    if package_owns:
+        _validate_package_target(TARGET, snapshot)
+    elif TARGET.exists() or TARGET.is_symlink():
+        raise LauncherError(f"unowned Tor Control Panel launcher remains: {TARGET}")
+
+
+def _validate_installed(
+    record: dict[str, object], snapshot: PackageSnapshot
+) -> tuple[bool, str | None]:
+    _assert_launcher_namespace()
+    if record["phase"] != "installed":
+        raise LauncherError("ownership record is not in the installed phase")
+    if _diversion() != "managed":
+        raise LauncherError(f"managed diversion disappeared: {TARGET}")
+    original = _original_hash(
+        snapshot,
+        record["original_sha256"],
+        allow_missing_without_package=not _package_owns_target(snapshot),
+    )
+    _wrapper_hash({record["managed_sha256"]})
+    desired_sha256 = _bytes_sha256(_wrapper_bytes())
+    fresh = (
+        _package_owns_target(snapshot)
+        and original is not None
+        and record["wrapper_revision"] == WRAPPER_REVISION
+        and record["package_version"] == snapshot.version
+        and record["managed_sha256"] == desired_sha256
+        and record["original_sha256"] == original
+    )
+    if fresh:
+        _validate_prerequisites()
+    return fresh, original
+
+
+def _validate_installing(
+    record: dict[str, object], snapshot: PackageSnapshot, desired_sha256: str
+) -> None:
+    _assert_launcher_namespace()
+    _require_package_target(snapshot)
+    if record["phase"] != "installing":
+        raise LauncherError("ownership record is not in the installing phase")
+    if record["desired_revision"] != WRAPPER_REVISION:
+        raise LauncherError("interrupted install expects a different wrapper revision")
+    if record["desired_sha256"] != desired_sha256:
+        raise LauncherError("interrupted install expects different wrapper content")
+    diversion = _diversion()
+    if diversion == "absent":
+        if DIVERTED.exists() or DIVERTED.is_symlink():
+            _original_hash(
+                snapshot,
+                record["original_sha256"],
+                allow_missing_without_package=False,
+            )
+            if TARGET.exists() or TARGET.is_symlink():
+                raise LauncherError(f"both paths exist during interrupted diversion add: {TARGET}")
+        else:
+            _validate_package_target(TARGET, snapshot)
+    elif DIVERTED.exists() or DIVERTED.is_symlink():
+        _original_hash(
+            snapshot,
+            record["original_sha256"],
+            allow_missing_without_package=False,
+        )
+        _wrapper_hash(_accepted_wrapper_hashes(record), allow_missing=True)
+    else:
+        # dpkg-divert records ADD metadata before renaming the package file.
+        _validate_package_target(TARGET, snapshot)
+
+
+def _validate_removing(
+    record: dict[str, object], snapshot: PackageSnapshot | None
+) -> None:
+    namespace_present = _assert_launcher_namespace(
+        required=snapshot is not None and _package_owns_target(snapshot)
+    )
+    if record["phase"] not in ("installing", "installed", "removing"):
+        raise LauncherError("ownership record cannot be removed safely")
+    diversion = _diversion()
+    if not namespace_present:
+        return
+    accepted = _accepted_wrapper_hashes(record)
+    package_owns = snapshot is not None and _package_owns_target(snapshot)
+    if diversion == "managed":
+        if DIVERTED.exists() or DIVERTED.is_symlink():
+            _original_hash(
+                snapshot,
+                record["original_sha256"],
+                allow_missing_without_package=True,
+            )
+            _wrapper_hash(accepted, allow_missing=True)
+        elif package_owns:
+            # dpkg-divert renamed REMOVE's backup before committing metadata.
+            _validate_package_target(TARGET, snapshot)
+        elif TARGET.exists() or TARGET.is_symlink():
+            _assert_regular_file(TARGET, mode=0o755)
+            actual = _digest(TARGET)
+            if actual not in accepted | {record["original_sha256"]}:
+                raise LauncherError(f"unexpected removal-recovery content: {TARGET}")
+        return
+    if DIVERTED.exists() or DIVERTED.is_symlink():
+        _original_hash(
+            snapshot,
+            record["original_sha256"],
+            allow_missing_without_package=True,
+        )
+        if TARGET.exists() or TARGET.is_symlink():
+            raise LauncherError(f"both paths exist after interrupted diversion removal: {TARGET}")
+        return
+    if package_owns:
+        _validate_package_target(TARGET, snapshot)
+    elif TARGET.exists() or TARGET.is_symlink():
+        _assert_regular_file(TARGET, mode=0o755)
+        if _digest(TARGET) != record["original_sha256"]:
+            raise LauncherError(f"unowned launcher remains after diversion removal: {TARGET}")
+
+
+def _prepare_update(
+    record: dict[str, object],
+    snapshot: PackageSnapshot,
+    original_sha256: str | None,
+    desired_sha256: str,
+) -> dict[str, object]:
+    if original_sha256 is None:
+        raise LauncherError("cannot update without the package launcher")
+    pending = json.loads(json.dumps(record))
+    pending["phase"] = "installing"
+    pending["desired_revision"] = WRAPPER_REVISION
+    pending["desired_sha256"] = desired_sha256
+    pending["package_version"] = snapshot.version
+    pending["original_sha256"] = original_sha256
+    return _validate_record_data(pending)
+
+
+def _finish_record(
+    record: dict[str, object], snapshot: PackageSnapshot, original_sha256: str
+) -> dict[str, object]:
+    completed = json.loads(json.dumps(record))
+    completed["phase"] = "installed"
+    completed["wrapper_revision"] = completed["desired_revision"]
+    completed["desired_revision"] = None
+    completed["managed_sha256"] = completed["desired_sha256"]
+    completed["desired_sha256"] = None
+    completed["package_version"] = snapshot.version
+    completed["original_sha256"] = original_sha256
+    return _validate_record_data(completed)
+
+
+def _resume_install(
+    record: dict[str, object], snapshot: PackageSnapshot, wrapper: bytes
+) -> None:
+    _assert_launcher_namespace()
+    _validate_prerequisites()
+    desired_sha256 = _bytes_sha256(wrapper)
+    _validate_installing(record, snapshot, desired_sha256)
+    diversion = _diversion()
+    if diversion == "absent":
+        if DIVERTED.exists() or DIVERTED.is_symlink():
+            _original_hash(
+                snapshot,
+                record["original_sha256"],
+                allow_missing_without_package=False,
+            )
+            if TARGET.exists() or TARGET.is_symlink():
+                raise LauncherError(f"both paths exist during interrupted diversion add: {TARGET}")
+            _add_diversion_metadata()
+        else:
+            _validate_package_target(TARGET, snapshot)
+            _add_diversion()
+        if _diversion() != "managed":
+            raise LauncherError(f"dpkg did not install diversion for {TARGET}")
+    if not DIVERTED.exists() and not DIVERTED.is_symlink():
+        # Recover ADD after its database commit but before its file rename.
+        _validate_package_target(TARGET, snapshot)
+        _atomic_move(TARGET, DIVERTED)
+    _original_hash(
+        snapshot,
+        record["original_sha256"],
+        allow_missing_without_package=False,
+    )
+    actual = _wrapper_hash(_accepted_wrapper_hashes(record), allow_missing=True)
+    if actual != desired_sha256:
+        _atomic_wrapper_write(wrapper)
+    _wrapper_hash({desired_sha256})
+
+    final_snapshot = _package_snapshot(PACKAGE, required=True)
+    assert final_snapshot is not None
+    _require_package_target(final_snapshot)
+    _validate_prerequisites()
+    if _diversion() != "managed":
+        raise LauncherError(f"managed diversion disappeared: {TARGET}")
+    original_sha256 = _validate_package_target(DIVERTED, final_snapshot)
+    _wrapper_hash({desired_sha256})
+    _write_record(_finish_record(record, final_snapshot, original_sha256))
+
+
+def install() -> None:
+    wrapper = _wrapper_bytes()
+    desired_sha256 = _bytes_sha256(wrapper)
+    snapshot = _package_snapshot(PACKAGE, required=False)
+    record = _load_record()
+    if record is not None:
+        _assert_launcher_namespace(
+            required=snapshot is not None and _package_owns_target(snapshot)
+        )
+    if snapshot is None and record is None:
+        _preflight_unmanaged(None)
+        return
+    if snapshot is None:
+        raise LauncherError(f"{PACKAGE} was removed with a managed diversion; run remove")
+    package_owns = _package_owns_target(snapshot)
+    if record is None:
+        _preflight_unmanaged(snapshot)
+        if not package_owns:
+            return
+        _validate_prerequisites()
+        original_sha256 = _validate_package_target(TARGET, snapshot)
+        record = _new_record(snapshot, original_sha256, desired_sha256)
+        _write_record(record)
+    else:
+        _require_package_target(snapshot)
+        _validate_prerequisites()
+    if record["phase"] == "removing":
+        raise LauncherError("Tor Control Panel launcher rollback is in progress; run remove")
+    if record["phase"] == "installed":
+        fresh, original_sha256 = _validate_installed(record, snapshot)
+        if fresh:
+            return
+        record = _prepare_update(record, snapshot, original_sha256, desired_sha256)
+        _write_record(record)
+    else:
+        _validate_installing(record, snapshot, desired_sha256)
+    _resume_install(record, snapshot, wrapper)
+
+
+def check() -> bool:
+    snapshot = _package_snapshot(PACKAGE, required=False)
+    record = _load_record()
+    if record is not None:
+        _assert_launcher_namespace(
+            required=snapshot is not None and _package_owns_target(snapshot)
+        )
+    if record is None:
+        _preflight_unmanaged(snapshot)
+        return snapshot is None or not _package_owns_target(snapshot)
+    if snapshot is None:
+        _validate_removing(record, None)
+        return False
+    if record["phase"] == "installed":
+        fresh, _ = _validate_installed(record, snapshot)
+        return fresh
+    if record["phase"] == "installing":
+        _validate_prerequisites()
+        _validate_installing(record, snapshot, _bytes_sha256(_wrapper_bytes()))
+        return False
+    _validate_removing(record, snapshot)
+    return False
+
+
+def validate_removal() -> None:
+    snapshot = _package_snapshot(PACKAGE, required=False)
+    record = _load_record()
+    if record is None:
+        _preflight_unmanaged(snapshot)
+        return
+    _validate_removing(record, snapshot)
+
+
+def _unlink_wrapper(accepted: set[str]) -> None:
+    _assert_launcher_namespace()
+    actual = _wrapper_hash(accepted, allow_missing=True)
+    if actual is None:
+        return
+    TARGET.unlink()
+    _fsync_directory(TARGET.parent)
+
+
+def _resume_remove(
+    record: dict[str, object], snapshot: PackageSnapshot | None
+) -> None:
+    namespace_present = _assert_launcher_namespace(
+        required=snapshot is not None and _package_owns_target(snapshot)
+    )
+    _validate_removing(record, snapshot)
+    diversion = _diversion()
+    if not namespace_present:
+        if diversion == "managed":
+            _remove_diversion_metadata()
+            if _diversion() != "absent":
+                raise LauncherError(f"dpkg did not remove diversion metadata for {TARGET}")
+        _remove_record()
+        return
+
+    accepted = _accepted_wrapper_hashes(record)
+    package_owns = snapshot is not None and _package_owns_target(snapshot)
+    backup_present = DIVERTED.exists() or DIVERTED.is_symlink()
+    if diversion == "managed" and backup_present:
+        _original_hash(
+            snapshot,
+            record["original_sha256"],
+            allow_missing_without_package=True,
+        )
+        _unlink_wrapper(accepted)
+        _remove_diversion()
+        if _diversion() != "absent":
+            raise LauncherError(f"dpkg did not remove diversion for {TARGET}")
+        if DIVERTED.exists() or DIVERTED.is_symlink():
+            raise LauncherError(f"diversion backup remains after removal: {DIVERTED}")
+    elif diversion == "managed":
+        # Recover REMOVE after its rename but before its database commit.
+        if TARGET.exists() or TARGET.is_symlink():
+            _assert_regular_file(TARGET, mode=0o755)
+            actual = _digest(TARGET)
+            if package_owns:
+                _validate_package_target(TARGET, snapshot)
+            elif actual in accepted:
+                _unlink_wrapper(accepted)
+            elif actual != record["original_sha256"]:
+                raise LauncherError(f"unexpected removal-recovery content: {TARGET}")
+        elif package_owns:
+            raise LauncherError(f"package launcher is missing during recovery: {TARGET}")
+        _remove_diversion_metadata()
+        if _diversion() != "absent":
+            raise LauncherError(f"dpkg did not remove diversion metadata for {TARGET}")
+    elif backup_present:
+        # Recover inverse ordering if metadata disappeared before the rename.
+        _original_hash(
+            snapshot,
+            record["original_sha256"],
+            allow_missing_without_package=True,
+        )
+        if TARGET.exists() or TARGET.is_symlink():
+            raise LauncherError(f"both paths exist after interrupted diversion removal: {TARGET}")
+        _atomic_move(DIVERTED, TARGET)
+
+    if package_owns:
+        _validate_package_target(TARGET, snapshot)
+    elif TARGET.exists() or TARGET.is_symlink():
+        _assert_regular_file(TARGET, mode=0o755)
+        if _digest(TARGET) != record["original_sha256"]:
+            raise LauncherError(f"unexpected launcher remains after rollback: {TARGET}")
+        TARGET.unlink()
+        _fsync_directory(TARGET.parent)
+    if DIVERTED.exists() or DIVERTED.is_symlink():
+        raise LauncherError(f"diversion backup remains after recovery: {DIVERTED}")
+    _remove_record()
+
+
+def remove() -> None:
+    snapshot = _package_snapshot(PACKAGE, required=False)
+    record = _load_record()
+    if record is None:
+        _preflight_unmanaged(snapshot)
+        return
+    _validate_removing(record, snapshot)
+    if record["phase"] != "removing":
+        removing = json.loads(json.dumps(record))
+        removing["phase"] = "removing"
+        _write_record(
+            _validate_record_data(removing),
+            launcher_namespace_required=(
+                snapshot is not None and _package_owns_target(snapshot)
+            ),
+        )
+        record = removing
+    _resume_remove(record, snapshot)
+
+
+def _lock() -> int:
+    _assert_real_directory(LOCK.parent)
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(LOCK, flags, 0o600)
+    lock_stat = os.fstat(descriptor)
+    if (
+        not stat.S_ISREG(lock_stat.st_mode)
+        or lock_stat.st_uid != 0
+        or lock_stat.st_gid != 0
+        or stat.S_IMODE(lock_stat.st_mode) != 0o600
+        or lock_stat.st_nlink != 1
+    ):
+        os.close(descriptor)
+        raise LauncherError(f"unsafe manager lock file: {LOCK}")
+    fcntl.flock(descriptor, fcntl.LOCK_EX)
+    return descriptor
+
+
+def _arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "action", choices=("install", "check", "validate-removal", "remove")
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    arguments = _arguments()
+    lock_descriptor = -1
+    try:
+        if os.geteuid() != 0:
+            raise LauncherError("Tor Control Panel launcher management must run as root")
+        _assert_formula_namespace()
+        lock_descriptor = _lock()
+        if arguments.action == "install":
+            install()
+            print("Tor Control Panel HUD launcher is installed (or package is absent)")
+            return 0
+        if arguments.action == "check":
+            return 0 if check() else 1
+        if arguments.action == "validate-removal":
+            validate_removal()
+            return 0
+        remove()
+        print("Tor Control Panel HUD launcher is removed")
+        return 0
+    except (LauncherError, OSError) as error:
+        print(f"Qubes HUD Tor Control Panel launcher refused: {error}", file=sys.stderr)
+        return 2
+    finally:
+        if lock_descriptor >= 0:
+            os.close(lock_descriptor)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

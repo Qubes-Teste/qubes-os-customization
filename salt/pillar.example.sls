@@ -1,7 +1,8 @@
 qubes_gui:
   i3:
-    # auto, direct-dom0, or qubes-updatevm
-    package_transport: auto
+    # Safe default: dom0 stays offline and signed RPMs arrive through UpdateVM.
+    # Optional overrides: auto or direct-dom0.
+    package_transport: qubes-updatevm
     desktop_user: user
     desktop_group: user
     modifier: Mod4
@@ -9,8 +10,9 @@ qubes_gui:
     force_replace_user_config: false
   hud:
     # Apply qubes_gui.i3 first so the exact audited Qubes i3 base is present.
-    # auto, direct-dom0, or qubes-updatevm
-    package_transport: auto
+    # Safe default: dom0 stays offline and signed RPMs arrive through UpdateVM.
+    # Optional overrides: auto or direct-dom0.
+    package_transport: qubes-updatevm
     desktop_user: user
     desktop_group: user
   # The guest state currently has safe fixed visual defaults. This section is

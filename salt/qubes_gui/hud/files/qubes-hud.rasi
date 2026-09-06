@@ -2,6 +2,10 @@
 configuration {
     modi:                       "drun,run,window";
     show-icons:                 true;
+    icon-theme:                 "Qubes-HUD-Cyan";
+    window {
+        prefer-icon-theme:      true;
+    }
     display-drun:               "APPS";
     display-run:                "CMD";
     display-window:             "WIN";

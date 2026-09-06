@@ -6,7 +6,7 @@ Comment=Black and cyan Qubes HUD application theme
 
 [X-GNOME-Metatheme]
 GtkTheme=Qubes-HUD
-IconTheme=Adwaita
+IconTheme=Qubes-HUD-Cyan
 CursorTheme=Adwaita
 ButtonLayout=menu:minimize,maximize,close
 ColorScheme=prefer-dark

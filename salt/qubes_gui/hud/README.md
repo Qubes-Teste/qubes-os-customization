@@ -17,6 +17,36 @@ and its glow end before that region, so they cannot overlap the button at any
 window width or display scale.
 Normal shell and application text uses the focused-frame cyan `#19d3ff`.
 Muted, disabled, selected, and urgent text retains separate semantic colors.
+GTK, Rofi, and Dunst select the locally generated `Qubes-HUD-Cyan` theme. Its
+generic glyphs use thin KDE Breeze Dark monochrome or symbolic geometry with
+their foreground paint fixed to exact `#19d3ff`. It covers actions, small
+categories, devices, emblems, MIME types, places, status icons, and custom thin
+information and warning glyphs; the generated tree uses roughly 70 MiB.
+
+Application-icon directories are intentionally not published by the theme.
+Fallback inheritance through Adwaita, hicolor, and Breeze Dark preserves
+application logos and Qubes VM class, label, security, and Qubes-specific
+warning icons. Neutral Qubes tray concepts such as clipboard, domains, disks,
+devices, and updates receive cyan aliases. Targeted regular NetworkManager
+wired, disconnected, Wi-Fi signal, and secure status files use thin cyan
+glyphs precomposed onto exact black for the legacy XEmbed path. Rofi prefers
+the theme to raw window icons, while Dunst uses the thin themed information or
+warning glyph only when a sender supplies no icon.
+
+For guest-owned XEmbed tray windows, the state changes Qubes' GuiVM-wide
+`gui-default-trayicon-mode` from its implicit full-label tint to the supported
+`border1` mode. The source pixels therefore remain intact while Qubes retains
+a one-pixel trusted VM-label border. Legacy 24-bit XEmbed source surfaces have
+no alpha channel and were observed compositing transparent pixels onto a
+light-gray `#f0f0f0` background before dom0 received them. The targeted
+regular NetworkManager states, including secure variants, and Sdwdate/Tor
+assets therefore carry their own exact-black canvas. A per-qube
+`gui-trayicon-mode` remains a
+higher-priority local policy. The state records the exact prior global feature
+value before changing it and restores that value (or removes the feature when
+it was originally absent) on rollback. Running `qubes-guid` processes are not
+restarted; each qube adopts the setting the next time its GUI connection
+starts.
 Picom adds an external cyan halo and an edge-weighted inner rim that fades
 toward the center. Universal glass intentionally composites each
 non-fullscreen application, including its Qubes frame and label line, at 30%
@@ -72,6 +102,10 @@ The state expects these sources under `qubes_gui/hud/files/`:
 - `qubes-hud.rasi`
 - `dunstrc`
 - `terminalrc`
+- `manage-cyan-icon-theme`
+- `manage-trayicon-mode`
+- `gtkrc-2.0`
+- `gtk-settings.ini`
 - `gtk-3.css`
 - `gtk-4.css`
 
@@ -100,11 +134,33 @@ the close button or press `Alt+F4` to close a window. Fullscreen windows have no
 decoration, so use the keyboard shortcut there.
 
 The state also owns the desktop user's Xfce Terminal profile so its normal and
-uncolored bold text uses `#19d3ff`. The HUD XSession selects Qt's GTK platform
-theme. Before starting XDG applications, the managed autostart helper publishes
-that setting to D-Bus and the systemd user manager as well. Native Qt tools
-launched directly or by Qubes' resident application menu therefore consume the
-same standard palette from the next login.
+uncolored bold text uses `#19d3ff`, plus GTK 2/3/4 settings that select
+`Qubes-HUD-Cyan`. The HUD XSession selects Qt's GTK platform theme. Before
+starting XDG applications, the managed autostart helper publishes that setting
+to D-Bus and the systemd user manager as well. Native Qt tools launched
+directly or by Qubes' resident application menu therefore use the adapter's
+font, icon-theme, and native-dialog integration from the next login. The GTK
+adapter does not translate GTK CSS colors into a Qt widget palette; Whonix's
+narrowly scoped `qt5ct` handling is separate.
+
+`manage-cyan-icon-theme` deterministically builds the theme from the installed
+KDE Breeze Dark package, preferring the thinner symbolic peer for a regular
+icon when one exists and exposing only Breeze directories documented as
+monochrome. Fedora supplies that source through `breeze-icon-theme`. Breeze
+artwork retains its upstream LGPL/CC-BY-SA licensing; the package's installed
+copyright and license files are authoritative. The generated theme includes a
+provenance note, owner marker, and manifest of inode types, modes, owners,
+hashes, and symbolic-link targets.
+
+`manage-trayicon-mode` applies only in dom0. It transactionally records the
+previous Qubes GuiVM feature before setting the one-pixel tray border, refuses
+external drift while owned, and restores the exact baseline on rollback.
+
+An icon theme can only replace icons looked up by name. Absolute Qubes
+application-menu icon paths, web content, thumbnails, client-provided tray
+images, and `_NET_WM_ICON` title-bar pixels bypass it. They remain untouched;
+the trusted Qubes label line and close-button colors also retain their security
+meaning.
 
 Except for binary assets, every managed source must contain a recognized text
 ownership marker. Formula/session files use
@@ -112,7 +168,8 @@ ownership marker. Formula/session files use
 Terminal, and GTK assets, Picom config, and window shader use
 `Qubes HUD managed file. Owner: salt/qubes_gui/hud.`. Binary ownership is
 recorded by adjacent `.owner` files created only after the corresponding asset
-has been installed successfully.
+has been installed successfully. The GTK icon-setting files similarly receive
+an ownership record only after all three have installed successfully.
 
 ## Collision safety
 
@@ -120,10 +177,24 @@ The state checks every destination with `lstat` and refuses as a whole when a
 target is a symbolic link, directory, FIFO, device, socket, other non-regular
 inode, or a regular file lacking the ownership marker. This deliberately
 protects an existing i3 config, Rofi theme, Dunst config, Xfce Terminal profile,
-GTK CSS, Picom config, window shader, helper, LightDM override, or XSession from
-silent adoption. It also ensures rollback can never recursively remove an
-unexpected directory. For the i3 binary and wallpaper, a pre-existing regular
-file is accepted only when its adjacent ownership record carries the marker.
+GTK settings or CSS, Picom config, window shader, helper, LightDM override, or
+XSession from silent adoption. It also ensures rollback can never recursively
+remove an unexpected directory. For the i3 binary and wallpaper, a pre-existing
+regular file is accepted only when its adjacent ownership record carries the
+marker.
+
+An existing `/usr/share/icons/Qubes-HUD-Cyan` is accepted only when its owner
+marker and complete manifest validate. An update first validates the old tree
+and builds its replacement separately. Rollback likewise checks the complete
+tree before unlinking only manifest-listed entries and removing directories
+once empty. Modified, added, ownership-changed, or type-changed content makes
+it refuse; a manifest-listed item already missing during an interrupted
+rollback is the sole exception, allowing that exact removal to resume.
+
+For upgrade compatibility, rollback preserves an unfamiliar pre-existing GTK
+icon settings file when the icon-setting ownership record has never been
+created. Once this version has installed that record, the normal strict marker
+checks apply to all three settings files.
 
 If a collision is intentional, move or merge that file manually and run the
 dry run again. There is no force-overwrite pillar.
@@ -141,11 +212,15 @@ sudo qubesctl state.sls qubes_gui.hud saltenv=user test=True
 sudo qubesctl state.sls qubes_gui.hud saltenv=user
 ```
 
-Package transport defaults to `auto`: a dom0 default IPv4 route selects direct
-DNF, otherwise the normal Qubes UpdateVM-backed `pkg.installed` path is used.
-Only the runtime packages `rofi`, `feh`, and `picom` are installed. If Picom
-was absent, the state records that it owns the package so rollback can remove
-it; a Picom package that predates the HUD is never claimed or removed.
+Package transport defaults to the normal Qubes UpdateVM-backed `pkg.installed`
+path, so deployment never assumes direct dom0 Internet. `auto` remains an
+explicit development override that selects direct DNF only when dom0 has a
+default IPv4 route; `direct-dom0` is also available as an explicit override.
+The runtime packages are `rofi`, `feh`, `picom`, and
+`breeze-icon-theme`. If Picom was absent, the state records that it owns the
+package so rollback can remove it; a Picom package that predates the HUD is
+never claimed or removed. The shared Breeze package is retained on rollback,
+like Rofi and Feh.
 Supported pillar keys are `qubes_gui:hud:desktop_user`, `desktop_group`, and
 `package_transport` (`auto`, `direct-dom0`, or `qubes-updatevm`).
 
@@ -167,12 +242,15 @@ sudo qubesctl state.sls qubes_gui.hud.rollback saltenv=user
 
 Rollback selects the packaged `i3` session for the next login, restores the
 include-only `~/.config/i3/config`, and removes only owner-marked HUD files,
-including the Xfce Terminal profile, plus the HUD XSession, wallpaper, helpers,
-Picom config and shader, and custom binary. It removes Picom only when the
-HUD's package-ownership record proves that the formula installed it; otherwise
-Picom is left untouched. It leaves `rofi`, `feh`, and all packaged Qubes/i3
-components installed. If any target is no longer an owner-marked regular file,
-rollback refuses before making changes.
+including the Xfce Terminal profile and GTK icon settings, plus the HUD
+XSession, wallpaper, helpers, Picom config and shader, generated cyan icon
+tree, and custom binary. The icon manager validates the entire generated tree
+against its ownership manifest before removing its listed entries. Rollback
+removes Picom only when the HUD's package-ownership record proves that the
+formula installed it; otherwise Picom is left untouched. It leaves `rofi`,
+`feh`, `breeze-icon-theme`, and all packaged Qubes/i3 components installed. If
+any existing target is no longer an owner-marked regular file, or the icon
+tree no longer matches its manifest, rollback refuses before making changes.
 
 The D-Bus activation environment cannot remove a published variable in place.
 After rollback from an active HUD session, log out normally to clear

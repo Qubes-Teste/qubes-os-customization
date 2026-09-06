@@ -33,7 +33,11 @@ window has no decoration and therefore no label line. Qubes' default gui-daemon
 policy rejects untrusted fullscreen requests, and the HUD config forces normal
 decorations for managed application windows.
 
-## Build
+## Maintainer-only rebuild
+
+This source rebuild is not part of deployment. A target Qubes machine copies
+the already-built, hash-pinned `i3-hud` binary from this repository, so neither
+dom0 Internet access nor build-tool installation is required there.
 
 Build on the Fedora 41 dom0 development environment after installing i3's
 build requirements. The script downloads directly over HTTPS, verifies both

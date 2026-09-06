@@ -37,6 +37,8 @@
     show_indicators = yes
 
     icon_position = left
+    icon_theme = Qubes-HUD-Cyan
+    enable_recursive_icon_lookup = true
     min_icon_size = 24
     max_icon_size = 48
 

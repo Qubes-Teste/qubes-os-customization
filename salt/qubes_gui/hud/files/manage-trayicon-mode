@@ -1,0 +1,279 @@
+#!/usr/bin/python3
+# Qubes HUD managed file. Owner: salt/qubes_gui/hud.
+"""Safely manage Qubes' GuiVM-wide guest tray-icon rendering mode."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+import stat
+import subprocess
+import sys
+import tempfile
+
+
+FEATURE = "gui-default-trayicon-mode"
+DESIRED_MODE = "border1"
+OWNER_MARKER = "Qubes HUD managed file. Owner: salt/qubes_gui/hud."
+RECORD_SCHEMA = 1
+DEFAULT_RECORD = Path("/usr/local/libexec/qubes-hud/trayicon-mode.owner")
+QVM_FEATURES = Path("/usr/bin/qvm-features")
+
+
+class TrayModeError(RuntimeError):
+    """A refusal caused by unsafe ownership or unexpected Qubes state."""
+
+
+def _run(arguments: list[str], *, allowed: tuple[int, ...] = (0,)) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        arguments,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if result.returncode not in allowed:
+        detail = result.stderr.strip() or result.stdout.strip() or "no diagnostic"
+        raise TrayModeError(
+            f"command failed ({result.returncode}): {' '.join(arguments)}: {detail}"
+        )
+    return result
+
+
+def _assert_dom0() -> None:
+    if not Path("/etc/qubes-release").is_file():
+        raise TrayModeError("tray-icon mode may be managed only in Qubes dom0")
+    try:
+        tool_stat = QVM_FEATURES.lstat()
+    except FileNotFoundError as error:
+        raise TrayModeError(f"required command is missing: {QVM_FEATURES}") from error
+    if stat.S_ISLNK(tool_stat.st_mode) or not stat.S_ISREG(tool_stat.st_mode):
+        raise TrayModeError(f"required command is not a regular file: {QVM_FEATURES}")
+
+
+def _feature() -> tuple[bool, str]:
+    result = _run(
+        [str(QVM_FEATURES), "--", "dom0", FEATURE],
+        allowed=(0, 1),
+    )
+    if result.returncode == 1:
+        if result.stdout or result.stderr:
+            detail = result.stderr.strip() or result.stdout.strip()
+            raise TrayModeError(f"could not read dom0 feature {FEATURE}: {detail}")
+        return False, ""
+    value = result.stdout[:-1] if result.stdout.endswith("\n") else result.stdout
+    if "\n" in value:
+        raise TrayModeError(f"dom0 feature {FEATURE} returned multiple lines")
+    return True, value
+
+
+def _set_feature(value: str) -> None:
+    _run([str(QVM_FEATURES), "--", "dom0", FEATURE, value])
+
+
+def _unset_feature() -> None:
+    _run([str(QVM_FEATURES), "--unset", "--", "dom0", FEATURE])
+
+
+def _expected_record_keys() -> set[str]:
+    return {
+        "schema",
+        "owner",
+        "feature",
+        "desired",
+        "phase",
+        "previous_present",
+        "previous_value",
+    }
+
+
+def _validate_record_data(data: object) -> dict[str, object]:
+    if not isinstance(data, dict) or set(data) != _expected_record_keys():
+        raise TrayModeError("tray-icon ownership record has an invalid schema")
+    if data["schema"] != RECORD_SCHEMA or data["owner"] != OWNER_MARKER:
+        raise TrayModeError("tray-icon ownership record is not owned by this HUD")
+    if data["feature"] != FEATURE or data["desired"] != DESIRED_MODE:
+        raise TrayModeError("tray-icon ownership record targets unexpected settings")
+    if data["phase"] not in ("prepared", "active", "removing"):
+        raise TrayModeError("tray-icon ownership record has an invalid phase")
+    if type(data["previous_present"]) is not bool:
+        raise TrayModeError("tray-icon ownership record has invalid presence metadata")
+    if not isinstance(data["previous_value"], str) or "\n" in data["previous_value"]:
+        raise TrayModeError("tray-icon ownership record has an invalid prior value")
+    if not data["previous_present"] and data["previous_value"]:
+        raise TrayModeError("absent prior feature cannot have a value")
+    return data
+
+
+def _load_record(record: Path) -> dict[str, object] | None:
+    try:
+        record_stat = record.lstat()
+    except FileNotFoundError:
+        return None
+    if stat.S_ISLNK(record_stat.st_mode) or not stat.S_ISREG(record_stat.st_mode):
+        raise TrayModeError(f"ownership record is not a regular file: {record}")
+    if (
+        stat.S_IMODE(record_stat.st_mode) != 0o644
+        or record_stat.st_uid != 0
+        or record_stat.st_gid != 0
+    ):
+        raise TrayModeError(f"ownership record metadata changed: {record}")
+    try:
+        data = json.loads(record.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise TrayModeError(f"cannot parse ownership record: {record}") from error
+    return _validate_record_data(data)
+
+
+def _write_record(record: Path, data: dict[str, object]) -> None:
+    _validate_record_data(data)
+    parent_stat = record.parent.lstat()
+    if stat.S_ISLNK(parent_stat.st_mode) or not stat.S_ISDIR(parent_stat.st_mode):
+        raise TrayModeError(f"record parent is not a real directory: {record.parent}")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{record.name}.", dir=record.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            json.dump(data, stream, sort_keys=True, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, 0o644)
+        os.chown(temporary, 0, 0)
+        os.replace(temporary, record)
+        directory_fd = os.open(record.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _matches_previous(data: dict[str, object], present: bool, value: str) -> bool:
+    return present == data["previous_present"] and (
+        not present or value == data["previous_value"]
+    )
+
+
+def install(record: Path) -> None:
+    data = _load_record(record)
+    present, value = _feature()
+    if data is None:
+        data = {
+            "schema": RECORD_SCHEMA,
+            "owner": OWNER_MARKER,
+            "feature": FEATURE,
+            "desired": DESIRED_MODE,
+            "phase": "prepared",
+            "previous_present": present,
+            "previous_value": value if present else "",
+        }
+        _write_record(record, data)
+    elif data["phase"] == "active":
+        if not present or value != DESIRED_MODE:
+            raise TrayModeError(
+                f"managed dom0 feature {FEATURE} changed outside this HUD"
+            )
+        return
+    elif not (
+        (present and value == DESIRED_MODE)
+        or _matches_previous(data, present, value)
+    ):
+        raise TrayModeError(
+            f"dom0 feature {FEATURE} changed during an interrupted transition"
+        )
+
+    if not present or value != DESIRED_MODE:
+        _set_feature(DESIRED_MODE)
+    data["phase"] = "active"
+    _write_record(record, data)
+
+
+def check(record: Path) -> bool:
+    data = _load_record(record)
+    if data is None or data["phase"] != "active":
+        return False
+    present, value = _feature()
+    return present and value == DESIRED_MODE
+
+
+def validate_removal(record: Path) -> None:
+    data = _load_record(record)
+    if data is None:
+        raise TrayModeError("tray-icon ownership record is missing")
+    present, value = _feature()
+    if data["phase"] == "active":
+        if not present or value != DESIRED_MODE:
+            raise TrayModeError(
+                f"managed dom0 feature {FEATURE} changed outside this HUD"
+            )
+    elif not (
+        (present and value == DESIRED_MODE)
+        or _matches_previous(data, present, value)
+    ):
+        raise TrayModeError(
+            f"dom0 feature {FEATURE} changed during an interrupted install"
+        )
+
+
+def remove(record: Path) -> None:
+    validate_removal(record)
+    data = _load_record(record)
+    assert data is not None
+    present, value = _feature()
+    if data["phase"] != "removing":
+        data["phase"] = "removing"
+        _write_record(record, data)
+    if not _matches_previous(data, present, value):
+        if data["previous_present"]:
+            _set_feature(str(data["previous_value"]))
+        else:
+            _unset_feature()
+    record.unlink()
+    directory_fd = os.open(record.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "action", choices=("install", "check", "validate-removal", "remove")
+    )
+    parser.add_argument("--record", type=Path, default=DEFAULT_RECORD)
+    return parser
+
+
+def main() -> int:
+    arguments = _parser().parse_args()
+    try:
+        _assert_dom0()
+        if arguments.record != DEFAULT_RECORD:
+            raise TrayModeError(f"record path is fixed at {DEFAULT_RECORD}")
+        if arguments.action == "install":
+            install(arguments.record)
+        elif arguments.action == "check":
+            if not check(arguments.record):
+                return 1
+        elif arguments.action == "validate-removal":
+            validate_removal(arguments.record)
+        else:
+            remove(arguments.record)
+    except (OSError, TrayModeError) as error:
+        print(f"manage-trayicon-mode: {error}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

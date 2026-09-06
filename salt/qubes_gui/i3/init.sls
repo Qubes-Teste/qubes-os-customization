@@ -5,7 +5,7 @@
 {% set modifier = settings.get('modifier', 'Mod4') %}
 {% set set_default_session = settings.get('set_default_session', true) %}
 {% set force_replace = settings.get('force_replace_user_config', false) %}
-{% set transport = settings.get('package_transport', 'auto') %}
+{% set transport = settings.get('package_transport', 'qubes-updatevm') %}
 {% set user_info = salt['user.info'](desktop_user) %}
 {% set desktop_home = user_info.get('home', '/home/' ~ desktop_user) if user_info else '/home/' ~ desktop_user %}
 {% set user_config = desktop_home ~ '/.config/i3/config' %}

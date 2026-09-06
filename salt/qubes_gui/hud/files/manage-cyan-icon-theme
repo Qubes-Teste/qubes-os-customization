@@ -1,0 +1,1295 @@
+#!/usr/bin/python3
+# Qubes HUD managed file. Owner: salt/qubes_gui/hud.
+"""Build and safely remove the generated Qubes HUD cyan icon theme."""
+
+from __future__ import annotations
+
+import argparse
+import configparser
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import xml.etree.ElementTree as ET
+
+
+THEME_NAME = "Qubes-HUD-Cyan"
+DISPLAY_NAME = "Qubes HUD Cyan Thin"
+DEFAULT_SOURCE = Path("/usr/share/icons/breeze-dark")
+DEFAULT_TARGET = Path("/usr/share/icons") / THEME_NAME
+CYAN = "#19d3ff"
+TRAY_CANVAS = "#000000"
+OWNER_MARKER = "Qubes HUD managed file. Owner: salt/qubes_gui/hud."
+OWNER_FILE = ".qubes-hud-owner"
+MANIFEST_FILE = ".qubes-hud-manifest.json"
+README_FILE = "README.qubes-hud"
+MANIFEST_SCHEMA = 2
+REMOVAL_STATE_SCHEMA = 1
+REMOVAL_TOMBSTONE = f".{THEME_NAME}.removing"
+REMOVAL_RECORD = f".{THEME_NAME}.removing.json"
+REMOVAL_RECORD_TEMP = f".{THEME_NAME}.removing.json.tmp"
+REMOVAL_RECORD_MAX_BYTES = 4096
+
+# Only Breeze directories documented upstream as monochrome are exposed. The
+# larger color illustrations stay outside the lookup index, so applications
+# scale the thinner vector glyphs instead of receiving solid cyan silhouettes.
+MONOCHROME_SIZES = {
+    "actions": {"12", "16", "22", "24", "32", "48", "64"},
+    "categories": {"22"},
+    "devices": {"16", "22", "32"},
+    "emblems": {"8", "16", "22"},
+    "mimetypes": {"16", "22"},
+    "places": {"16", "22"},
+    "status": {"16", "22", "24", "32"},
+}
+
+# NetworkManager's tray applet requests regular names and renders them through
+# a legacy depth-24 XEmbed source surface with no alpha. Transparent pixels
+# were observed compositing onto light gray before dom0 received them, so those
+# files need an opaque canvas. Symbolic peers remain transparent: GTK's
+# semantic symbolic loader treats every opaque pixel as a recoloring mask,
+# including a canvas.
+NETWORKMANAGER_COMPOSITES = {
+    "nm-device-wired-secure.svg": "../24/network-wired-activated-locked.svg",
+    "nm-signal-00-secure.svg": "../24/network-wireless-0-locked.svg",
+    "nm-signal-25-secure.svg": "../24/network-wireless-40-locked.svg",
+    "nm-signal-50-secure.svg": "../24/network-wireless-60-locked.svg",
+    "nm-signal-75-secure.svg": "../24/network-wireless-80-locked.svg",
+    "nm-signal-100-secure.svg": "../24/network-wireless-100-locked.svg",
+}
+NETWORKMANAGER_TRAY_BASES = (
+    "nm-device-wired",
+    "nm-no-connection",
+    "nm-signal-00",
+    "nm-signal-25",
+    "nm-signal-50",
+    "nm-signal-75",
+    "nm-signal-100",
+)
+NETWORKMANAGER_TRAY_SIZES = ("22", "24")
+
+# These aliases cover NetworkManager's transparent symbolic fallbacks and
+# neutral Qubes status icons. VM-label indicators and Qubes warning icons such
+# as qui-red-warn and qui-disk-space-warn deliberately remain untouched.
+STATUS_ALIASES = {
+    # GTK's symbolic loader mishandles Breeze's locked SVG canvas metadata;
+    # use the equivalent true symbolic peers while regular icons retain locks.
+    "nm-device-wired-secure-symbolic.svg": "../24/nm-device-wired-symbolic.svg",
+    "nm-signal-00-secure-symbolic.svg": "../24/nm-signal-00-symbolic.svg",
+    "nm-signal-25-secure-symbolic.svg": "../24/nm-signal-25-symbolic.svg",
+    "nm-signal-50-secure-symbolic.svg": "../24/nm-signal-50-symbolic.svg",
+    "nm-signal-75-secure-symbolic.svg": "../24/nm-signal-75-symbolic.svg",
+    "nm-signal-100-secure-symbolic.svg": "../24/nm-signal-100-symbolic.svg",
+    "qui-clipboard.svg": "../../actions/22/edit-paste.svg",
+    "qui-clipboard-dark.svg": "../../actions/22/edit-paste.svg",
+    "qui-clipboard-light.svg": "../../actions/22/edit-paste.svg",
+    "qui-domains-scalable.svg": "../../actions/22/view-list-tree.svg",
+    "qui-disk-space.svg": "../../devices/22/drive-harddisk.svg",
+    "qubes-devices.svg": "../../devices/22/drive-removable-media.svg",
+    "qui-updates.svg": "../22/system-software-update.svg",
+    "qui-updates-dark.svg": "../22/system-software-update.svg",
+    "qui-updates-light.svg": "../22/system-software-update.svg",
+}
+
+PAINT_PROPERTIES = (
+    "color",
+    "fill",
+    "stroke",
+    "stop-color",
+    "solid-color",
+    "flood-color",
+    "lighting-color",
+)
+CSS_PAINT_RE = re.compile(
+    r"(?i)(?P<property>"
+    + "|".join(re.escape(item) for item in PAINT_PROPERTIES)
+    + r")(?P<space>\s*:\s*)(?P<value>[^;}]+)"
+)
+
+INFORMATION_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <circle cx="12" cy="12" r="9" fill="none" stroke="#19d3ff" stroke-width="1.5"/>
+  <circle cx="12" cy="7.5" r="1" fill="#19d3ff"/>
+  <path d="M12 11v6" fill="none" stroke="#19d3ff" stroke-width="1.5" stroke-linecap="round"/>
+</svg>
+"""
+
+WARNING_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path d="M12 3.5 21 20H3Z" fill="none" stroke="#19d3ff" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M12 9v5" fill="none" stroke="#19d3ff" stroke-width="1.5" stroke-linecap="round"/>
+  <circle cx="12" cy="17" r="1" fill="#19d3ff"/>
+</svg>
+"""
+
+
+class ThemeError(RuntimeError):
+    """A refusal caused by an unsafe or inconsistent theme tree."""
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _relative(path: Path, root: Path) -> str:
+    return path.relative_to(root).as_posix()
+
+
+def _walk(root: Path):
+    """Yield (relative path, lstat) without following directory symlinks."""
+    for current, directory_names, file_names in os.walk(
+        root, topdown=True, followlinks=False
+    ):
+        current_path = Path(current)
+        directory_names.sort()
+        file_names.sort()
+
+        real_directories = []
+        for name in directory_names:
+            candidate = current_path / name
+            candidate_stat = candidate.lstat()
+            yield _relative(candidate, root), candidate_stat
+            if stat.S_ISDIR(candidate_stat.st_mode):
+                real_directories.append(name)
+            elif not stat.S_ISLNK(candidate_stat.st_mode):
+                raise ThemeError(f"unsupported inode in theme: {candidate}")
+        directory_names[:] = real_directories
+
+        for name in file_names:
+            candidate = current_path / name
+            candidate_stat = candidate.lstat()
+            yield _relative(candidate, root), candidate_stat
+
+
+def _assert_absolute_theme_path(path: Path, *, allow_backup: bool = False) -> None:
+    allowed_names = {THEME_NAME}
+    if allow_backup:
+        allowed_names.add(f".{THEME_NAME}.previous")
+    if not path.is_absolute() or path.name not in allowed_names:
+        raise ThemeError(
+            f"target is not an allowed absolute {THEME_NAME} path: {path}"
+        )
+    parent = path.parent
+    current = Path(parent.anchor)
+    for component in parent.parts[1:]:
+        current /= component
+        try:
+            current_stat = current.lstat()
+        except FileNotFoundError as error:
+            raise ThemeError(f"target parent does not exist: {current}") from error
+        if stat.S_ISLNK(current_stat.st_mode) or not stat.S_ISDIR(
+            current_stat.st_mode
+        ):
+            raise ThemeError(f"target parent is not a real directory: {current}")
+
+
+def _assert_source(source: Path, target: Path) -> None:
+    if not source.is_absolute():
+        raise ThemeError(f"source must be absolute: {source}")
+    try:
+        source_stat = source.lstat()
+    except FileNotFoundError as error:
+        raise ThemeError(f"Breeze Dark source theme is missing: {source}") from error
+    if stat.S_ISLNK(source_stat.st_mode) or not stat.S_ISDIR(source_stat.st_mode):
+        raise ThemeError(f"Breeze Dark source is not a real directory: {source}")
+    if not (source / "index.theme").is_file():
+        raise ThemeError(f"Breeze Dark index.theme is missing beneath {source}")
+    fallback = source.parent / "breeze"
+    if not fallback.is_dir() or fallback.is_symlink():
+        raise ThemeError(f"Breeze fallback theme is missing or unsafe: {fallback}")
+    if source == target or target in source.parents or source in target.parents:
+        raise ThemeError("source and generated target must be separate trees")
+
+
+def _source_signature(source: Path) -> str:
+    digest = hashlib.sha256()
+    for relative, entry_stat in _walk(source):
+        path = source / relative
+        mode = entry_stat.st_mode
+        digest.update(relative.encode("utf-8", "surrogateescape"))
+        digest.update(b"\0")
+        if stat.S_ISDIR(mode):
+            digest.update(b"directory\0")
+        elif stat.S_ISLNK(mode):
+            digest.update(b"symlink\0")
+            digest.update(os.readlink(path).encode("utf-8", "surrogateescape"))
+            digest.update(b"\0")
+        elif stat.S_ISREG(mode):
+            digest.update(b"file\0")
+            digest.update(_sha256(path).encode("ascii"))
+            digest.update(b"\0")
+        else:
+            raise ThemeError(f"unsupported inode in Breeze source: {path}")
+    return digest.hexdigest()
+
+
+def _generator_signature() -> str:
+    return _sha256(Path(__file__))
+
+
+def _paint_value(value: str) -> str:
+    stripped = value.strip()
+    lowered = stripped.lower()
+    if lowered == "none" or lowered.startswith("url("):
+        return stripped
+    return CYAN
+
+
+def _recolor_css(text: str) -> str:
+    def replacement(match: re.Match[str]) -> str:
+        return (
+            match.group("property")
+            + match.group("space")
+            + _paint_value(match.group("value"))
+        )
+
+    return CSS_PAINT_RE.sub(replacement, text)
+
+
+def _recolor_svg(path: Path) -> None:
+    namespaces = []
+    try:
+        for _, namespace in ET.iterparse(path, events=("start-ns",)):
+            if namespace not in namespaces:
+                namespaces.append(namespace)
+        for prefix, uri in namespaces:
+            try:
+                ET.register_namespace(prefix, uri)
+            except ValueError:
+                # Reserved or duplicate prefixes do not affect SVG rendering.
+                pass
+        tree = ET.parse(path)
+    except ET.ParseError as error:
+        raise ThemeError(f"invalid Breeze SVG {path}: {error}") from error
+
+    root = tree.getroot()
+    root.set("color", CYAN)
+    root.set("fill", CYAN)
+    for element in root.iter():
+        for attribute in PAINT_PROPERTIES:
+            if attribute in element.attrib:
+                element.set(attribute, _paint_value(element.attrib[attribute]))
+        if "style" in element.attrib:
+            element.set("style", _recolor_css(element.attrib["style"]))
+        if element.tag.rsplit("}", 1)[-1] == "style" and element.text:
+            element.text = _recolor_css(element.text)
+
+    temporary = path.with_name(path.name + ".tmp")
+    tree.write(temporary, encoding="utf-8", xml_declaration=True)
+    os.chmod(temporary, stat.S_IMODE(path.stat().st_mode))
+    os.replace(temporary, path)
+
+
+def _is_monochrome_directory(value: str) -> bool:
+    try:
+        category, size = value.split("/", 1)
+    except ValueError:
+        return False
+    base_size = size.split("@", 1)[0]
+    return base_size in MONOCHROME_SIZES.get(category, set())
+
+
+def _configure_index(stage: Path) -> None:
+    index = stage / "index.theme"
+    parser = configparser.ConfigParser(interpolation=None, strict=False)
+    parser.optionxform = str
+    with index.open("r", encoding="utf-8") as stream:
+        parser.read_file(stream)
+    if "Icon Theme" not in parser:
+        raise ThemeError("Breeze Dark index.theme has no [Icon Theme] section")
+
+    theme = parser["Icon Theme"]
+    for key in list(theme):
+        if key.startswith("Name[") or key.startswith("Comment["):
+            del theme[key]
+    theme["Name"] = DISPLAY_NAME
+    theme["Comment"] = "Thin Breeze system glyphs fixed to Qubes HUD cyan"
+    theme["Inherits"] = "Adwaita,hicolor,breeze-dark"
+    theme["FollowsColorScheme"] = "false"
+
+    selected_directories = []
+    for key in ("Directories", "ScaledDirectories"):
+        values = [item.strip() for item in theme.get(key, "").split(",")]
+        values = [
+            item
+            for item in values
+            if item
+            and _is_monochrome_directory(item)
+            and (stage / item).exists()
+        ]
+        if key == "Directories":
+            values.append("status/scalable")
+        theme[key] = ",".join(values)
+        selected_directories.extend(values)
+
+    allowed_sections = {"Icon Theme", *selected_directories}
+    for section in list(parser.sections()):
+        if section not in allowed_sections:
+            parser.remove_section(section)
+
+    if parser.has_section("status/scalable"):
+        parser.remove_section("status/scalable")
+    parser["status/scalable"] = {
+        "Size": "22",
+        "Context": "Status",
+        "Type": "Scalable",
+        "MinSize": "8",
+        "MaxSize": "512",
+    }
+    with index.open("w", encoding="utf-8", newline="\n") as stream:
+        parser.write(stream, space_around_delimiters=False)
+
+
+def _add_status_aliases(stage: Path) -> None:
+    alias_directory = stage / "status" / "scalable"
+    alias_directory.mkdir(parents=True, exist_ok=True)
+    for name, target in sorted(STATUS_ALIASES.items()):
+        destination = alias_directory / name
+        if destination.exists() or destination.is_symlink():
+            destination.unlink()
+        destination.symlink_to(target)
+        try:
+            resolved = destination.resolve(strict=True)
+        except FileNotFoundError as error:
+            raise ThemeError(f"Breeze alias target is missing: {target}") from error
+        if stage not in resolved.parents:
+            raise ThemeError(f"Breeze alias escapes generated theme: {target}")
+
+
+def _write_opaque_networkmanager_svg(
+    source: Path, destination: Path, stage: Path
+) -> None:
+    try:
+        resolved = source.resolve(strict=True)
+    except FileNotFoundError as error:
+        raise ThemeError(f"NetworkManager SVG source is missing: {source}") from error
+    try:
+        resolved_stat = resolved.lstat()
+    except OSError as error:
+        raise ThemeError(f"cannot inspect NetworkManager SVG source: {source}") from error
+    if stage not in resolved.parents or not stat.S_ISREG(resolved_stat.st_mode):
+        raise ThemeError(f"unsafe NetworkManager SVG source: {source}")
+
+    try:
+        tree = ET.parse(resolved)
+    except ET.ParseError as error:
+        raise ThemeError(f"invalid NetworkManager SVG {resolved}: {error}") from error
+    root = tree.getroot()
+    if root.tag not in ("svg", "{http://www.w3.org/2000/svg}svg"):
+        raise ThemeError(f"NetworkManager source has no SVG root: {resolved}")
+    view_box = root.get("viewBox")
+    coordinates = re.split(r"[\s,]+", view_box.strip()) if view_box else []
+    try:
+        numeric_coordinates = [float(value) for value in coordinates]
+    except ValueError as error:
+        raise ThemeError(f"invalid NetworkManager SVG viewBox: {resolved}") from error
+    if (
+        len(numeric_coordinates) != 4
+        or not all(math.isfinite(value) for value in numeric_coordinates)
+        or numeric_coordinates[2] <= 0
+        or numeric_coordinates[3] <= 0
+    ):
+        raise ThemeError(f"invalid NetworkManager SVG viewBox: {resolved}")
+    canvas_id = "qubes-hud-opaque-black-canvas"
+    if any(element.get("id") == canvas_id for element in root.iter()):
+        raise ThemeError(f"reserved canvas id in NetworkManager SVG: {resolved}")
+    namespace = root.tag[1:].split("}", 1)[0] if root.tag.startswith("{") else ""
+    canvas_tag = f"{{{namespace}}}rect" if namespace else "rect"
+    canvas = ET.Element(
+        canvas_tag,
+        {
+            "id": canvas_id,
+            "x": coordinates[0],
+            "y": coordinates[1],
+            "width": coordinates[2],
+            "height": coordinates[3],
+            "fill": TRAY_CANVAS,
+            "fill-opacity": "1",
+            "stroke": "none",
+        },
+    )
+    root.insert(0, canvas)
+
+    if destination.is_dir() and not destination.is_symlink():
+        raise ThemeError(f"unexpected NetworkManager SVG directory: {destination}")
+    file_descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+    )
+    os.close(file_descriptor)
+    temporary = Path(temporary_name)
+    try:
+        tree.write(temporary, encoding="utf-8", xml_declaration=True)
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, destination)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _add_networkmanager_composites(stage: Path) -> None:
+    """Give every regular NetworkManager tray state an opaque canvas."""
+    for size in NETWORKMANAGER_TRAY_SIZES:
+        directory = stage / "status" / size
+        for base_name in NETWORKMANAGER_TRAY_BASES:
+            path = directory / f"{base_name}.svg"
+            _write_opaque_networkmanager_svg(path, path, stage)
+
+    scalable = stage / "status" / "scalable"
+    scalable.mkdir(parents=True, exist_ok=True)
+    for name, target in sorted(NETWORKMANAGER_COMPOSITES.items()):
+        _write_opaque_networkmanager_svg(scalable / target, scalable / name, stage)
+
+
+def _materialize_breeze_fallbacks(stage: Path, source: Path) -> None:
+    """Replace Breeze Dark's packaged dangling links with Breeze SVG content."""
+    fallback_root = source.parent / "breeze"
+    for relative, entry_stat in list(_walk(stage)):
+        target = stage / relative
+        if not stat.S_ISLNK(entry_stat.st_mode):
+            continue
+        try:
+            target.resolve(strict=True)
+            continue
+        except FileNotFoundError:
+            pass
+        fallback = fallback_root / relative
+        try:
+            fallback_resolved = fallback.resolve(strict=True)
+        except FileNotFoundError:
+            target.unlink()
+            continue
+        fallback_stat = fallback_resolved.stat()
+        if not stat.S_ISREG(fallback_stat.st_mode) or fallback_resolved.suffix != ".svg":
+            target.unlink()
+            continue
+        contents = fallback_resolved.read_bytes()
+        target.unlink()
+        target.write_bytes(contents)
+        os.chmod(target, 0o644)
+
+
+def _prefer_symbolic_geometry(stage: Path) -> None:
+    """Make a regular name use its thinner symbolic peer when one exists."""
+    for relative, entry_stat in list(_walk(stage)):
+        symbolic = stage / relative
+        if (
+            not (stat.S_ISREG(entry_stat.st_mode) or stat.S_ISLNK(entry_stat.st_mode))
+            or not symbolic.name.endswith("-symbolic.svg")
+            or not _is_monochrome_directory(symbolic.parent.relative_to(stage).as_posix())
+        ):
+            continue
+        regular = symbolic.with_name(symbolic.name.removesuffix("-symbolic.svg") + ".svg")
+        if not regular.exists() and not regular.is_symlink():
+            continue
+        try:
+            symbolic_bytes = symbolic.read_bytes()
+        except OSError:
+            continue
+        temporary = regular.with_name(regular.name + ".symbolic-tmp")
+        temporary.write_bytes(symbolic_bytes)
+        os.chmod(temporary, 0o644)
+        if regular.exists() or regular.is_symlink():
+            regular.unlink()
+        os.replace(temporary, regular)
+
+
+def _materialize_monochrome_links(stage: Path) -> None:
+    """Make indexed glyph aliases self-contained before support dirs are pruned."""
+    for category, sizes in MONOCHROME_SIZES.items():
+        for size in sizes:
+            directory = stage / category / size
+            if not directory.is_dir() or directory.is_symlink():
+                continue
+            for relative, entry_stat in list(_walk(directory)):
+                path = directory / relative
+                if not stat.S_ISLNK(entry_stat.st_mode):
+                    continue
+                try:
+                    resolved = path.resolve(strict=True)
+                except FileNotFoundError as error:
+                    raise ThemeError(f"unresolved Breeze glyph alias: {path}") from error
+                if stage not in resolved.parents or not resolved.is_file():
+                    raise ThemeError(f"unsafe Breeze glyph alias: {path}")
+                contents = resolved.read_bytes()
+                path.unlink()
+                path.write_bytes(contents)
+                os.chmod(path, 0o644)
+
+
+def _discard_stage_path(path: Path) -> None:
+    if path.is_symlink() or not path.is_dir():
+        path.unlink()
+    else:
+        shutil.rmtree(path)
+
+
+def _prune_to_monochrome(stage: Path) -> None:
+    """Remove unindexed artwork, especially app logos and color illustrations."""
+    for path in sorted(stage.iterdir(), key=lambda item: item.name):
+        if path.name == "index.theme":
+            continue
+        sizes = MONOCHROME_SIZES.get(path.name)
+        if sizes is None:
+            _discard_stage_path(path)
+            continue
+        if path.is_symlink() or not path.is_dir():
+            raise ThemeError(f"unexpected Breeze category inode: {path}")
+        for child in sorted(path.iterdir(), key=lambda item: item.name):
+            base_size = child.name.split("@", 1)[0]
+            if base_size not in sizes:
+                _discard_stage_path(child)
+                continue
+            if child.is_symlink():
+                try:
+                    resolved = child.resolve(strict=True)
+                except FileNotFoundError as error:
+                    raise ThemeError(f"broken Breeze scale directory: {child}") from error
+                if stage not in resolved.parents or not resolved.is_dir():
+                    raise ThemeError(f"unsafe Breeze scale directory: {child}")
+
+
+def _add_thin_dialog_icons(stage: Path) -> None:
+    destinations = [stage / "status" / "scalable"]
+    destinations.extend(
+        stage / "status" / size
+        for size in sorted(MONOCHROME_SIZES["status"], key=int)
+    )
+    for directory in destinations:
+        directory.mkdir(parents=True, exist_ok=True)
+        for base_name, contents in (
+            ("dialog-information", INFORMATION_SVG),
+            ("dialog-warning", WARNING_SVG),
+        ):
+            for name in (f"{base_name}.svg", f"{base_name}-symbolic.svg"):
+                target = directory / name
+                if target.exists() or target.is_symlink():
+                    target.unlink()
+                target.write_text(contents, encoding="utf-8")
+                os.chmod(target, 0o644)
+
+
+def _describe_tree(root: Path) -> dict[str, dict[str, object]]:
+    entries: dict[str, dict[str, object]] = {}
+    for relative, entry_stat in _walk(root):
+        if relative == MANIFEST_FILE:
+            continue
+        path = root / relative
+        mode = entry_stat.st_mode
+        permissions = stat.S_IMODE(mode)
+        if stat.S_ISDIR(mode):
+            entries[relative] = {
+                "type": "directory",
+                "mode": permissions,
+                "uid": entry_stat.st_uid,
+                "gid": entry_stat.st_gid,
+            }
+        elif stat.S_ISLNK(mode):
+            entries[relative] = {
+                "type": "symlink",
+                "target": os.readlink(path),
+                "uid": entry_stat.st_uid,
+                "gid": entry_stat.st_gid,
+            }
+        elif stat.S_ISREG(mode):
+            entries[relative] = {
+                "type": "file",
+                "mode": permissions,
+                "sha256": _sha256(path),
+                "uid": entry_stat.st_uid,
+                "gid": entry_stat.st_gid,
+            }
+        else:
+            raise ThemeError(f"unsupported inode in generated theme: {path}")
+    return entries
+
+
+def _validate_manifest_entries(entries: dict[str, object]) -> None:
+    """Reject paths or metadata that this generator could not have emitted."""
+    for relative, details in entries.items():
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or relative == MANIFEST_FILE
+            or "\0" in relative
+            or Path(relative).is_absolute()
+            or Path(relative).as_posix() != relative
+            or any(part in ("", ".", "..") for part in Path(relative).parts)
+        ):
+            raise ThemeError(f"unsafe generated-theme manifest path: {relative!r}")
+        if not isinstance(details, dict):
+            raise ThemeError(f"invalid manifest entry for {relative}")
+        entry_type = details.get("type")
+        common = {"type", "uid", "gid"}
+        if entry_type == "directory":
+            expected_keys = common | {"mode"}
+        elif entry_type == "file":
+            expected_keys = common | {"mode", "sha256"}
+        elif entry_type == "symlink":
+            expected_keys = common | {"target"}
+        else:
+            raise ThemeError(f"invalid manifest inode type for {relative}")
+        if set(details) != expected_keys:
+            raise ThemeError(f"invalid manifest fields for {relative}")
+        if (
+            type(details["uid"]) is not int
+            or type(details["gid"]) is not int
+            or details["uid"] != 0
+            or details["gid"] != 0
+        ):
+            raise ThemeError(f"non-root ownership in manifest for {relative}")
+        if "mode" in details and (
+            isinstance(details["mode"], bool)
+            or not isinstance(details["mode"], int)
+            or not 0 <= details["mode"] <= 0o7777
+        ):
+            raise ThemeError(f"invalid manifest mode for {relative}")
+        if entry_type == "file" and (
+            not isinstance(details["sha256"], str)
+            or re.fullmatch(r"[0-9a-f]{64}", details["sha256"]) is None
+        ):
+            raise ThemeError(f"invalid manifest hash for {relative}")
+        if entry_type == "symlink" and (
+            not isinstance(details["target"], str)
+            or not details["target"]
+            or "\0" in details["target"]
+        ):
+            raise ThemeError(f"invalid manifest symlink target for {relative}")
+
+
+def _metadata(source: Path) -> dict[str, object]:
+    return {
+        "schema": MANIFEST_SCHEMA,
+        "theme": THEME_NAME,
+        "color": CYAN,
+        "monochrome_sizes": {
+            key: sorted(value, key=int) for key, value in sorted(MONOCHROME_SIZES.items())
+        },
+        "source": str(source),
+        "source_signature": _source_signature(source),
+        "fallback_signature": _source_signature(source.parent / "breeze"),
+        "generator_signature": _generator_signature(),
+    }
+
+
+def _write_manifest(stage: Path, metadata: dict[str, object]) -> None:
+    manifest = {"metadata": metadata, "entries": _describe_tree(stage)}
+    path = stage / MANIFEST_FILE
+    with path.open("w", encoding="utf-8", newline="\n") as stream:
+        json.dump(manifest, stream, indent=2, sort_keys=True)
+        stream.write("\n")
+    os.chmod(path, 0o644)
+    os.chown(path, 0, 0)
+
+
+def _normalize_ownership(stage: Path) -> None:
+    os.chown(stage, 0, 0)
+    for relative, _ in _walk(stage):
+        os.chown(stage / relative, 0, 0, follow_symlinks=False)
+
+
+def _load_and_validate(
+    root: Path,
+    *,
+    allow_missing_entries: bool = False,
+    allow_removal_temporary: bool = False,
+) -> dict[str, object]:
+    try:
+        root_stat = root.lstat()
+    except FileNotFoundError as error:
+        raise ThemeError(f"generated theme is missing: {root}") from error
+    if stat.S_ISLNK(root_stat.st_mode) or not stat.S_ISDIR(root_stat.st_mode):
+        raise ThemeError(f"generated theme is not a real directory: {root}")
+    if stat.S_IMODE(root_stat.st_mode) != 0o755:
+        raise ThemeError(f"generated theme root mode is not 0755: {root}")
+    if root_stat.st_uid != 0 or root_stat.st_gid != 0:
+        raise ThemeError(f"generated theme root is not owned by root: {root}")
+
+    owner = root / OWNER_FILE
+    manifest_path = root / MANIFEST_FILE
+    for path in (owner, manifest_path):
+        try:
+            path_stat = path.lstat()
+        except FileNotFoundError as error:
+            raise ThemeError(f"generated theme ownership file is missing: {path}") from error
+        if stat.S_ISLNK(path_stat.st_mode) or not stat.S_ISREG(path_stat.st_mode):
+            raise ThemeError(f"generated theme ownership file is unsafe: {path}")
+        if (
+            stat.S_IMODE(path_stat.st_mode) != 0o644
+            or path_stat.st_uid != 0
+            or path_stat.st_gid != 0
+        ):
+            raise ThemeError(f"generated theme ownership file metadata is invalid: {path}")
+    if OWNER_MARKER not in owner.read_text(encoding="utf-8"):
+        raise ThemeError(f"generated theme ownership marker is invalid: {owner}")
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ThemeError(f"generated theme manifest is invalid: {manifest_path}") from error
+    if not isinstance(manifest, dict) or not isinstance(
+        manifest.get("entries"), dict
+    ):
+        raise ThemeError(f"generated theme manifest has an invalid shape: {manifest_path}")
+    metadata = manifest.get("metadata")
+    if (
+        not isinstance(metadata, dict)
+        or metadata.get("schema") != MANIFEST_SCHEMA
+        or metadata.get("theme") != THEME_NAME
+        or metadata.get("color") != CYAN
+    ):
+        raise ThemeError(f"generated theme manifest metadata is invalid: {manifest_path}")
+    _validate_manifest_entries(manifest["entries"])
+    removal_temporary = root / REMOVAL_RECORD_TEMP
+    if _lexists(removal_temporary):
+        if not allow_removal_temporary:
+            raise ThemeError(
+                "generated theme contains an unexpected removal temporary file"
+            )
+        _validate_removal_temp(removal_temporary)
+    actual_entries = _describe_tree(root)
+    if allow_removal_temporary:
+        actual_entries.pop(REMOVAL_RECORD_TEMP, None)
+    if allow_missing_entries:
+        tree_matches = all(
+            manifest["entries"].get(relative) == details
+            for relative, details in actual_entries.items()
+        )
+    else:
+        tree_matches = actual_entries == manifest["entries"]
+    if not tree_matches:
+        raise ThemeError(
+            "generated theme differs from its ownership manifest; refusing mutation"
+        )
+    return manifest
+
+
+def _lexists(path: Path) -> bool:
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _removal_paths(parent: Path) -> tuple[Path, Path, Path]:
+    return (
+        parent / REMOVAL_TOMBSTONE,
+        parent / REMOVAL_RECORD,
+        # Older development revisions used this predictable sibling path. It
+        # has no enclosing manifest as provenance and is always a collision.
+        parent / REMOVAL_RECORD_TEMP,
+    )
+
+
+def _internal_removal_temporary(root: Path) -> Path:
+    return root / REMOVAL_RECORD_TEMP
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _validate_removal_temp(path: Path) -> None:
+    try:
+        path_stat = path.lstat()
+    except FileNotFoundError:
+        return
+    if (
+        not stat.S_ISREG(path_stat.st_mode)
+        or stat.S_IMODE(path_stat.st_mode) != 0o600
+        or path_stat.st_uid != 0
+        or path_stat.st_gid != 0
+        or path_stat.st_nlink != 1
+        or path_stat.st_size > REMOVAL_RECORD_MAX_BYTES
+    ):
+        raise ThemeError(f"unsafe generated-theme removal temporary file: {path}")
+
+
+def _load_removal_record(path: Path) -> dict[str, object]:
+    try:
+        path_stat = path.lstat()
+    except FileNotFoundError as error:
+        raise ThemeError(f"generated-theme removal record is missing: {path}") from error
+    if (
+        not stat.S_ISREG(path_stat.st_mode)
+        or stat.S_IMODE(path_stat.st_mode) != 0o600
+        or path_stat.st_uid != 0
+        or path_stat.st_gid != 0
+        or path_stat.st_nlink != 1
+        or not 0 < path_stat.st_size <= REMOVAL_RECORD_MAX_BYTES
+    ):
+        raise ThemeError(f"unsafe generated-theme removal record: {path}")
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as error:
+        raise ThemeError(f"invalid generated-theme removal record: {path}") from error
+    if not isinstance(record, dict) or set(record) != {
+        "schema",
+        "theme",
+        "original_name",
+        "owner_sha256",
+        "manifest_sha256",
+    }:
+        raise ThemeError(f"invalid generated-theme removal record shape: {path}")
+    if (
+        type(record["schema"]) is not int
+        or record["schema"] != REMOVAL_STATE_SCHEMA
+        or record["theme"] != THEME_NAME
+        or record["original_name"]
+        not in (THEME_NAME, f".{THEME_NAME}.previous")
+        or not isinstance(record["owner_sha256"], str)
+        or re.fullmatch(r"[0-9a-f]{64}", record["owner_sha256"]) is None
+        or not isinstance(record["manifest_sha256"], str)
+        or re.fullmatch(r"[0-9a-f]{64}", record["manifest_sha256"]) is None
+    ):
+        raise ThemeError(f"invalid generated-theme removal record data: {path}")
+    return record
+
+
+def _removal_record_for(root: Path) -> dict[str, object]:
+    return {
+        "schema": REMOVAL_STATE_SCHEMA,
+        "theme": THEME_NAME,
+        "original_name": root.name,
+        "owner_sha256": _sha256(root / OWNER_FILE),
+        "manifest_sha256": _sha256(root / MANIFEST_FILE),
+    }
+
+
+def _write_removal_record(root: Path) -> dict[str, object]:
+    tombstone, record_path, external_temporary = _removal_paths(root.parent)
+    temporary = _internal_removal_temporary(root)
+    if (
+        _lexists(record_path)
+        or _lexists(tombstone)
+        or _lexists(external_temporary)
+    ):
+        raise ThemeError("another generated-theme removal is already in progress")
+    if _lexists(temporary):
+        raise ThemeError("generated theme already has a removal temporary file")
+
+    record = _removal_record_for(root)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(temporary, flags, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+        os.fchown(descriptor, 0, 0)
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            descriptor = -1
+            json.dump(record, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        # Persist the attributable in-tree temporary before moving it to the
+        # sibling commit point. After both directory fsyncs, payload deletion
+        # may begin; a crash before then leaves either recoverable name.
+        _fsync_directory(root)
+        os.replace(temporary, record_path)
+        _fsync_directory(root)
+        _fsync_directory(root.parent)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    return record
+
+
+def _validate_terminal_removal_tree(
+    root: Path, record: dict[str, object], *, require_both: bool
+) -> None:
+    try:
+        root_stat = root.lstat()
+    except FileNotFoundError as error:
+        raise ThemeError(f"generated-theme removal tombstone is missing: {root}") from error
+    if (
+        not stat.S_ISDIR(root_stat.st_mode)
+        or stat.S_IMODE(root_stat.st_mode) != 0o755
+        or root_stat.st_uid != 0
+        or root_stat.st_gid != 0
+    ):
+        raise ThemeError(f"unsafe generated-theme removal tombstone: {root}")
+
+    children = {path.name: path for path in root.iterdir()}
+    allowed = {OWNER_FILE, MANIFEST_FILE}
+    if not set(children).issubset(allowed) or (require_both and set(children) != allowed):
+        raise ThemeError(f"unexpected generated-theme removal tombstone contents: {root}")
+    for name, hash_key in (
+        (OWNER_FILE, "owner_sha256"),
+        (MANIFEST_FILE, "manifest_sha256"),
+    ):
+        path = children.get(name)
+        if path is None:
+            continue
+        path_stat = path.lstat()
+        if (
+            not stat.S_ISREG(path_stat.st_mode)
+            or stat.S_IMODE(path_stat.st_mode) != 0o644
+            or path_stat.st_uid != 0
+            or path_stat.st_gid != 0
+            or _sha256(path) != record[hash_key]
+        ):
+            raise ThemeError(f"invalid generated-theme removal tombstone file: {path}")
+
+
+def _inspect_removal_state(
+    parent: Path,
+) -> tuple[dict[str, object] | None, bool]:
+    tombstone, record_path, external_temporary = _removal_paths(parent)
+    if _lexists(external_temporary):
+        raise ThemeError(
+            "unattributable sibling generated-theme removal temporary file: "
+            f"{external_temporary}"
+        )
+
+    original_roots = (
+        parent / THEME_NAME,
+        parent / f".{THEME_NAME}.previous",
+    )
+    temporary_roots = [
+        root for root in original_roots if _lexists(_internal_removal_temporary(root))
+    ]
+    if len(temporary_roots) > 1:
+        raise ThemeError("multiple generated-theme removal temporary files exist")
+    temporary_root = temporary_roots[0] if temporary_roots else None
+    temporary_exists = temporary_root is not None
+
+    record_exists = _lexists(record_path)
+    tombstone_exists = _lexists(tombstone)
+    if not record_exists:
+        if tombstone_exists:
+            raise ThemeError(
+                f"generated-theme removal tombstone has no record: {tombstone}"
+            )
+        if temporary_root is None:
+            return None, False
+        _load_and_validate(temporary_root, allow_removal_temporary=True)
+        return _removal_record_for(temporary_root), True
+
+    if temporary_exists:
+        raise ThemeError(
+            "generated-theme removal has both a committed record and an "
+            "in-tree temporary"
+        )
+
+    record = _load_removal_record(record_path)
+    original = parent / str(record["original_name"])
+    original_exists = _lexists(original)
+    if original_exists and tombstone_exists:
+        raise ThemeError("generated-theme removal has both original and tombstone trees")
+    if original_exists:
+        _load_and_validate(original, allow_missing_entries=True)
+        if (
+            _sha256(original / OWNER_FILE) != record["owner_sha256"]
+            or _sha256(original / MANIFEST_FILE) != record["manifest_sha256"]
+        ):
+            raise ThemeError("generated-theme removal record does not match original")
+    elif tombstone_exists:
+        _validate_terminal_removal_tree(tombstone, record, require_both=False)
+    return record, temporary_exists
+
+
+def _remove_manifest_payload(root: Path, manifest: dict[str, object]) -> None:
+    entries = manifest["entries"]
+    non_directories = [
+        relative
+        for relative, details in entries.items()
+        if details["type"] != "directory" and relative != OWNER_FILE
+    ]
+    for relative in sorted(non_directories, key=lambda item: (item.count("/"), item)):
+        try:
+            (root / relative).unlink()
+        except FileNotFoundError:
+            pass
+
+    directories = [
+        relative
+        for relative, details in entries.items()
+        if details["type"] == "directory"
+    ]
+    for relative in sorted(
+        directories, key=lambda item: (item.count("/"), item), reverse=True
+    ):
+        try:
+            (root / relative).rmdir()
+        except FileNotFoundError:
+            pass
+
+
+def _finish_terminal_removal(parent: Path, record: dict[str, object]) -> None:
+    tombstone, record_path, _ = _removal_paths(parent)
+    _validate_terminal_removal_tree(tombstone, record, require_both=False)
+    for name in (OWNER_FILE, MANIFEST_FILE):
+        try:
+            (tombstone / name).unlink()
+        except FileNotFoundError:
+            pass
+    _fsync_directory(tombstone)
+    tombstone.rmdir()
+    _fsync_directory(parent)
+    try:
+        record_path.unlink()
+    except FileNotFoundError:
+        pass
+    _fsync_directory(parent)
+
+
+def _recover_interrupted_removal(
+    parent: Path, *, expected_name: str | None = None
+) -> bool:
+    tombstone, record_path, _ = _removal_paths(parent)
+    record, temporary_exists = _inspect_removal_state(parent)
+    if (
+        record is not None
+        and expected_name is not None
+        and record["original_name"] != expected_name
+    ):
+        raise ThemeError(
+            "generated-theme removal record targets "
+            f"{record['original_name']}, not {expected_name}"
+        )
+    if record is None:
+        return False
+
+    original = parent / str(record["original_name"])
+    if temporary_exists:
+        temporary = _internal_removal_temporary(original)
+        _load_and_validate(original, allow_removal_temporary=True)
+        temporary.unlink()
+        _fsync_directory(original)
+        record = _write_removal_record(original)
+    if _lexists(original):
+        manifest = _load_and_validate(original, allow_missing_entries=True)
+        _remove_manifest_payload(original, manifest)
+        _validate_terminal_removal_tree(original, record, require_both=True)
+        _fsync_directory(original)
+        os.replace(original, tombstone)
+        _fsync_directory(parent)
+    if _lexists(tombstone):
+        _finish_terminal_removal(parent, record)
+    else:
+        record_path.unlink()
+        _fsync_directory(parent)
+    return True
+
+
+def _remove_validated_tree(root: Path) -> None:
+    manifest = _load_and_validate(root, allow_missing_entries=True)
+    record = _write_removal_record(root)
+    _remove_manifest_payload(root, manifest)
+    _validate_terminal_removal_tree(root, record, require_both=True)
+    _fsync_directory(root)
+    tombstone, _, _ = _removal_paths(root.parent)
+    os.replace(root, tombstone)
+    _fsync_directory(root.parent)
+    _finish_terminal_removal(root.parent, record)
+
+
+def _build(source: Path, stage: Path, metadata: dict[str, object]) -> None:
+    shutil.copytree(source, stage, symlinks=True, dirs_exist_ok=True)
+    os.chmod(stage, 0o755)
+    for stale_name in (OWNER_FILE, MANIFEST_FILE, "icon-theme.cache"):
+        stale = stage / stale_name
+        if stale.exists() or stale.is_symlink():
+            if stale.is_dir() and not stale.is_symlink():
+                raise ThemeError(f"unexpected directory in Breeze source: {stale}")
+            stale.unlink()
+
+    _configure_index(stage)
+    _materialize_breeze_fallbacks(stage, source)
+    _prefer_symbolic_geometry(stage)
+    _materialize_monochrome_links(stage)
+    _prune_to_monochrome(stage)
+    _add_status_aliases(stage)
+    for relative, entry_stat in list(_walk(stage)):
+        path = stage / relative
+        if stat.S_ISREG(entry_stat.st_mode) and path.suffix.lower() == ".svg":
+            _recolor_svg(path)
+    _add_networkmanager_composites(stage)
+    _add_thin_dialog_icons(stage)
+
+    owner_text = (
+        f"# {OWNER_MARKER}\n"
+        f"theme={THEME_NAME}\n"
+        f"color={CYAN}\n"
+        "base=breeze-dark\n"
+    )
+    (stage / OWNER_FILE).write_text(owner_text, encoding="utf-8")
+    os.chmod(stage / OWNER_FILE, 0o644)
+    readme_text = (
+        f"{DISPLAY_NAME}\n\n"
+        f"Generated locally from the installed KDE Breeze Dark icon theme.\n"
+        f"Generic system glyphs are fixed to {CYAN}; application and Qubes VM-label\n"
+        "icons intentionally fall through to Adwaita and hicolor. Breeze artwork\n"
+        "retains its upstream LGPL/CC-BY-SA terms; see the installed Breeze package\n"
+        "copyright and license files on this system.\n"
+    )
+    (stage / README_FILE).write_text(readme_text, encoding="utf-8")
+    os.chmod(stage / README_FILE, 0o644)
+
+    cache_tool = shutil.which("gtk-update-icon-cache")
+    if cache_tool:
+        completed = subprocess.run(
+            [cache_tool, "--force", "--ignore-theme-index", str(stage)],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if completed.returncode != 0:
+            raise ThemeError(
+                "gtk-update-icon-cache failed: " + completed.stderr.strip()
+            )
+    _normalize_ownership(stage)
+    _write_manifest(stage, metadata)
+
+
+def _install(source: Path, target: Path) -> None:
+    if os.geteuid() != 0:
+        raise ThemeError("install must run as root")
+    _assert_absolute_theme_path(target)
+    _recover_interrupted_removal(target.parent)
+    backup = target.parent / f".{THEME_NAME}.previous"
+    if target.exists() or target.is_symlink():
+        _load_and_validate(target)
+    if backup.exists() or backup.is_symlink():
+        if target.exists():
+            _remove_validated_tree(backup)
+        else:
+            try:
+                _load_and_validate(backup)
+            except ThemeError:
+                # An interrupted cleanup may leave a proven subset, but never
+                # promote that subset as an active icon theme.
+                _remove_validated_tree(backup)
+            else:
+                os.replace(backup, target)
+
+    _assert_source(source, target)
+    metadata = _metadata(source)
+    parent = target.parent
+    stage = Path(tempfile.mkdtemp(prefix=f".{THEME_NAME}.build.", dir=parent))
+    try:
+        _build(source, stage, metadata)
+        if target.exists():
+            os.replace(target, backup)
+        try:
+            os.replace(stage, target)
+        except BaseException:
+            if backup.exists() and not target.exists():
+                os.replace(backup, target)
+            raise
+        if backup.exists():
+            _remove_validated_tree(backup)
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage)
+
+
+def _check(source: Path, target: Path) -> bool:
+    _assert_absolute_theme_path(target)
+    _assert_source(source, target)
+    removal_record, removal_temporary = _inspect_removal_state(target.parent)
+    if removal_record is not None or removal_temporary:
+        return False
+    backup = target.parent / f".{THEME_NAME}.previous"
+    if backup.exists() or backup.is_symlink():
+        _load_and_validate(backup, allow_missing_entries=True)
+        return False
+    if not target.exists() and not target.is_symlink():
+        return False
+    manifest = _load_and_validate(target)
+    return manifest.get("metadata") == _metadata(source)
+
+
+def _remove(target: Path) -> None:
+    if os.geteuid() != 0:
+        raise ThemeError("remove must run as root")
+    _assert_absolute_theme_path(target, allow_backup=True)
+    _recover_interrupted_removal(target.parent)
+    if not target.exists() and not target.is_symlink():
+        return
+    _remove_validated_tree(target)
+
+
+def _arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "action",
+        choices=(
+            "install",
+            "check",
+            "validate",
+            "validate-removal",
+            "validate-removal-state",
+            "recover-removal",
+            "remove",
+        ),
+    )
+    parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
+    parser.add_argument("--target", type=Path, default=DEFAULT_TARGET)
+    return parser.parse_args()
+
+
+def main() -> int:
+    arguments = _arguments()
+    source = arguments.source
+    target = arguments.target
+    try:
+        if arguments.action == "install":
+            _install(source, target)
+            print(f"installed {DISPLAY_NAME} at {target}")
+            return 0
+        if arguments.action == "check":
+            return 0 if _check(source, target) else 1
+        if arguments.action == "validate":
+            _assert_absolute_theme_path(target, allow_backup=True)
+            _load_and_validate(target)
+            return 0
+        if arguments.action == "validate-removal":
+            _assert_absolute_theme_path(target, allow_backup=True)
+            _load_and_validate(target, allow_missing_entries=True)
+            return 0
+        if arguments.action == "validate-removal-state":
+            _assert_absolute_theme_path(target, allow_backup=True)
+            record, _ = _inspect_removal_state(target.parent)
+            if record is None or record["original_name"] != target.name:
+                return 1
+            return 0
+        if arguments.action == "recover-removal":
+            if os.geteuid() != 0:
+                raise ThemeError("removal recovery must run as root")
+            _assert_absolute_theme_path(target, allow_backup=True)
+            recovered = _recover_interrupted_removal(
+                target.parent, expected_name=target.name
+            )
+            message = (
+                "recovered interrupted generated-theme removal"
+                if recovered
+                else "no interrupted generated-theme removal"
+            )
+            print(message)
+            return 0
+        _remove(target)
+        print(f"removed {DISPLAY_NAME} from {target}")
+        return 0
+    except ThemeError as error:
+        print(f"Qubes HUD cyan icon theme refused: {error}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,1369 @@
+#!/usr/bin/python3
+# Qubes HUD managed file. Owner: salt/qubes_gui/guest_hud.
+"""Safely replace sdwdate's package-owned tray PNGs with thin HUD art."""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+import fcntl
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import stat
+import struct
+import subprocess
+import sys
+import tempfile
+import zlib
+
+
+PACKAGE = "sdwdate-gui"
+ICON_ROOT = Path("/usr/share/sdwdate-gui/icons")
+PACKAGE_ROOT = ICON_ROOT.parent
+CONFIG_ROOT = Path("/etc/qubes-hud")
+CONFIG_OWNER = CONFIG_ROOT / ".salt-owner"
+RECORD = CONFIG_ROOT / "sdwdate-tray-icons.owner"
+LOCK = Path("/run/lock/qubes-hud-sdwdate-tray-icons.lock")
+DPKG_QUERY = Path("/usr/bin/dpkg-query")
+DPKG_DIVERT = Path("/usr/bin/dpkg-divert")
+OWNER_MARKER = "Qubes HUD managed file. Owner: salt/qubes_gui/guest_hud."
+MANAGER_NAME = "manage-sdwdate-tray-icons"
+RECORD_SCHEMA = 1
+ART_REVISION = 2
+SUPERSAMPLE = 4
+
+CYAN = (0x19, 0xD3, 0xFF)
+AMBER = (0xFF, 0xB0, 0x20)
+ALERT = (0xFF, 0x3B, 0x6B)
+
+
+@dataclass(frozen=True)
+class IconSpec:
+    """One package path and the deterministic HUD artwork replacing it."""
+
+    name: str
+    size: int
+    color: tuple[int, int, int]
+    glyph: str
+
+    @property
+    def target(self) -> Path:
+        return ICON_ROOT / self.name
+
+    @property
+    def diverted(self) -> Path:
+        return self.target.with_name(self.target.name + ".qubes-hud-original")
+
+
+ICON_SPECS = (
+    IconSpec("error.png", 48, ALERT, "error"),
+    IconSpec("sdwdate-stopped.png", 32, ALERT, "stopped"),
+    IconSpec("sdwdate-success.png", 32, CYAN, "success"),
+    IconSpec("sdwdate-wait.png", 32, CYAN, "busy"),
+    IconSpec("tor-ok.png", 48, CYAN, "tor-ok"),
+    IconSpec("tor-warning.png", 48, AMBER, "warning"),
+)
+SPEC_BY_NAME = {spec.name: spec for spec in ICON_SPECS}
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
+MD5_RE = re.compile(r"[0-9a-f]{32}")
+
+
+class TrayIconError(RuntimeError):
+    """A refusal caused by unsafe ownership or inconsistent package state."""
+
+
+@dataclass(frozen=True)
+class PackageSnapshot:
+    """The installed package version and hashes declared by dpkg."""
+
+    version: str
+    md5s: dict[str, str]
+    owned_icons: frozenset[str]
+
+
+class AlphaMask:
+    """Small supersampled alpha-only drawing surface."""
+
+    def __init__(self, size: int) -> None:
+        self.size = size
+        self.scale = SUPERSAMPLE
+        self.extent = size * self.scale
+        self.pixels = bytearray(self.extent * self.extent)
+
+    def _paint(self, predicate) -> None:
+        scale = self.scale
+        extent = self.extent
+        for row in range(extent):
+            y = (row + 0.5) / scale
+            offset = row * extent
+            for column in range(extent):
+                x = (column + 0.5) / scale
+                if predicate(x, y):
+                    self.pixels[offset + column] = 1
+
+    def disk(self, x: float, y: float, radius: float) -> None:
+        radius_squared = radius * radius
+        self._paint(
+            lambda sample_x, sample_y: (sample_x - x) ** 2
+            + (sample_y - y) ** 2
+            <= radius_squared
+        )
+
+    def ring(self, x: float, y: float, radius: float, width: float) -> None:
+        inner = max(0.0, radius - width / 2.0) ** 2
+        outer = (radius + width / 2.0) ** 2
+        self._paint(
+            lambda sample_x, sample_y: inner
+            <= (sample_x - x) ** 2 + (sample_y - y) ** 2
+            <= outer
+        )
+
+    def line(
+        self,
+        start_x: float,
+        start_y: float,
+        end_x: float,
+        end_y: float,
+        width: float,
+    ) -> None:
+        delta_x = end_x - start_x
+        delta_y = end_y - start_y
+        length_squared = delta_x * delta_x + delta_y * delta_y
+        radius_squared = (width / 2.0) ** 2
+
+        def contains(sample_x: float, sample_y: float) -> bool:
+            if length_squared == 0:
+                nearest_x, nearest_y = start_x, start_y
+            else:
+                position = (
+                    (sample_x - start_x) * delta_x
+                    + (sample_y - start_y) * delta_y
+                ) / length_squared
+                position = min(1.0, max(0.0, position))
+                nearest_x = start_x + position * delta_x
+                nearest_y = start_y + position * delta_y
+            return (
+                (sample_x - nearest_x) ** 2 + (sample_y - nearest_y) ** 2
+                <= radius_squared
+            )
+
+        self._paint(contains)
+
+    def polyline(self, points: tuple[tuple[float, float], ...], width: float) -> None:
+        for start, end in zip(points, points[1:]):
+            self.line(start[0], start[1], end[0], end[1], width)
+
+    def arc(
+        self,
+        x: float,
+        y: float,
+        radius: float,
+        start_degrees: float,
+        end_degrees: float,
+        width: float,
+    ) -> None:
+        steps = max(8, int(abs(end_degrees - start_degrees) / 6.0))
+        points = []
+        for index in range(steps + 1):
+            angle = math.radians(
+                start_degrees
+                + (end_degrees - start_degrees) * index / steps
+            )
+            points.append((x + radius * math.cos(angle), y + radius * math.sin(angle)))
+        self.polyline(tuple(points), width)
+
+    def polygon(self, points: tuple[tuple[float, float], ...]) -> None:
+        def contains(sample_x: float, sample_y: float) -> bool:
+            inside = False
+            previous_x, previous_y = points[-1]
+            for current_x, current_y in points:
+                crosses = (current_y > sample_y) != (previous_y > sample_y)
+                if crosses:
+                    edge_x = (
+                        (previous_x - current_x)
+                        * (sample_y - current_y)
+                        / (previous_y - current_y)
+                        + current_x
+                    )
+                    if sample_x < edge_x:
+                        inside = not inside
+                previous_x, previous_y = current_x, current_y
+            return inside
+
+        self._paint(contains)
+
+    def rgba(self, color: tuple[int, int, int]) -> bytes:
+        """Downsample onto an opaque black XEmbed-compatible canvas."""
+        output = bytearray()
+        scale = self.scale
+        extent = self.extent
+        samples = scale * scale
+        for target_y in range(self.size):
+            for target_x in range(self.size):
+                coverage = 0
+                for offset_y in range(scale):
+                    source_y = target_y * scale + offset_y
+                    source_offset = source_y * extent + target_x * scale
+                    coverage += sum(
+                        self.pixels[source_offset : source_offset + scale]
+                    )
+                # Legacy 24-bit XEmbed source surfaces have no alpha; these
+                # pixels were observed compositing onto light gray before
+                # dom0 received them. Precomposing the antialiased glyph onto
+                # exact black keeps the tray canvas consistent with the HUD
+                # bar while retaining each state's semantic color.
+                output.extend(
+                    (
+                        (color[0] * coverage + samples // 2) // samples,
+                        (color[1] * coverage + samples // 2) // samples,
+                        (color[2] * coverage + samples // 2) // samples,
+                        255,
+                    )
+                )
+        return bytes(output)
+
+
+def _draw_glyph(spec: IconSpec) -> AlphaMask:
+    mask = AlphaMask(spec.size)
+    factor = spec.size / 32.0
+
+    def line(points: tuple[tuple[float, float], ...], width: float = 1.55) -> None:
+        mask.polyline(
+            tuple((x * factor, y * factor) for x, y in points), width * factor
+        )
+
+    def ring(x: float, y: float, radius: float, width: float = 1.55) -> None:
+        mask.ring(x * factor, y * factor, radius * factor, width * factor)
+
+    if spec.glyph == "success":
+        ring(16, 16, 10.5)
+        line(((10.5, 16.5), (14.5, 20.5), (22.5, 11.5)), 1.7)
+    elif spec.glyph == "busy":
+        # An open circular arrow remains legible when Qt scales it to 22 px.
+        mask.arc(
+            16 * factor,
+            16 * factor,
+            10.5 * factor,
+            -65,
+            245,
+            1.55 * factor,
+        )
+        line(((8.0, 22.8), (8.2, 17.8), (12.7, 20.0)), 1.55)
+        mask.disk(16 * factor, 16 * factor, 1.05 * factor)
+    elif spec.glyph == "stopped":
+        ring(16, 16, 10.5)
+        mask.polygon(
+            tuple((x * factor, y * factor) for x, y in ((12.5, 12.5), (19.5, 12.5), (19.5, 19.5), (12.5, 19.5)))
+        )
+    elif spec.glyph == "error":
+        ring(16, 16, 10.5)
+        line(((11.5, 11.5), (20.5, 20.5)), 1.7)
+        line(((20.5, 11.5), (11.5, 20.5)), 1.7)
+    elif spec.glyph in ("tor-ok", "warning"):
+        # Both Tor states share a small onion/bulb silhouette.  The tapered
+        # crown, round lobes, and three roots survive Qt's 48-to-22 px scale.
+        onion_outline = (
+            (16.0, 4.0),
+            (15.0, 7.0),
+            (12.2, 9.2),
+            (9.5, 11.8),
+            (7.6, 15.0),
+            (6.9, 18.5),
+            (7.7, 21.8),
+            (10.0, 24.6),
+            (13.0, 26.3),
+            (16.0, 26.8),
+            (19.0, 26.3),
+            (22.0, 24.6),
+            (24.3, 21.8),
+            (25.1, 18.5),
+            (24.4, 15.0),
+            (22.5, 11.8),
+            (19.8, 9.2),
+            (17.0, 7.0),
+            (16.0, 4.0),
+        )
+        line(onion_outline, 1.45)
+        line(((12.8, 26.1), (11.8, 28.5)), 1.2)
+        line(((16.0, 26.8), (16.0, 29.2)), 1.2)
+        line(((19.2, 26.1), (20.2, 28.5)), 1.2)
+        if spec.glyph == "tor-ok":
+            line(
+                (
+                    (16.0, 7.2),
+                    (13.5, 10.5),
+                    (11.8, 14.3),
+                    (11.5, 18.2),
+                    (12.7, 22.0),
+                    (16.0, 25.0),
+                ),
+                1.15,
+            )
+            line(
+                (
+                    (16.0, 7.2),
+                    (18.5, 10.5),
+                    (20.2, 14.3),
+                    (20.5, 18.2),
+                    (19.3, 22.0),
+                    (16.0, 25.0),
+                ),
+                1.15,
+            )
+        else:
+            line(((16.0, 10.5), (16.0, 19.0)), 1.55)
+            mask.disk(16.0 * factor, 22.5 * factor, 1.0 * factor)
+    else:  # pragma: no cover - ICON_SPECS is a closed constant.
+        raise TrayIconError(f"unknown glyph definition: {spec.glyph}")
+    return mask
+
+
+def _png_chunk(chunk_type: bytes, payload: bytes) -> bytes:
+    checksum = zlib.crc32(chunk_type + payload) & 0xFFFFFFFF
+    return struct.pack(">I", len(payload)) + chunk_type + payload + struct.pack(">I", checksum)
+
+
+def _png_bytes(spec: IconSpec) -> bytes:
+    rgba = _draw_glyph(spec).rgba(spec.color)
+    stride = spec.size * 4
+    raw = b"".join(
+        b"\x00" + rgba[offset : offset + stride]
+        for offset in range(0, len(rgba), stride)
+    )
+    header = struct.pack(">IIBBBBB", spec.size, spec.size, 8, 6, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + _png_chunk(b"IHDR", header)
+        + _png_chunk(b"IDAT", zlib.compress(raw, 9))
+        + _png_chunk(b"IEND", b"")
+    )
+
+
+def _artwork() -> dict[str, bytes]:
+    return {spec.name: _png_bytes(spec) for spec in ICON_SPECS}
+
+
+def _digest(path: Path, algorithm: str = "sha256") -> str:
+    if algorithm == "md5":
+        digest = hashlib.md5(usedforsecurity=False)
+    else:
+        digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _bytes_sha256(contents: bytes) -> str:
+    return hashlib.sha256(contents).hexdigest()
+
+
+def _run(
+    arguments: list[str], *, allowed: tuple[int, ...] = (0,)
+) -> subprocess.CompletedProcess[str]:
+    environment = os.environ.copy()
+    environment["LC_ALL"] = "C"
+    try:
+        result = subprocess.run(
+            arguments,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+        )
+    except FileNotFoundError as error:
+        raise TrayIconError(f"required command is missing: {arguments[0]}") from error
+    if result.returncode not in allowed:
+        diagnostic = result.stderr.strip() or result.stdout.strip() or "no diagnostic"
+        raise TrayIconError(
+            f"command failed ({result.returncode}): {' '.join(arguments)}: {diagnostic}"
+        )
+    return result
+
+
+def _assert_real_directory(path: Path, mode: int | None = None) -> os.stat_result:
+    try:
+        path_stat = path.lstat()
+    except FileNotFoundError as error:
+        raise TrayIconError(f"required directory is missing: {path}") from error
+    if stat.S_ISLNK(path_stat.st_mode) or not stat.S_ISDIR(path_stat.st_mode):
+        raise TrayIconError(f"path is not a real directory: {path}")
+    if path_stat.st_uid != 0 or path_stat.st_gid != 0:
+        raise TrayIconError(f"directory is not owned by root:root: {path}")
+    if mode is not None and stat.S_IMODE(path_stat.st_mode) != mode:
+        raise TrayIconError(f"directory mode is not {mode:04o}: {path}")
+    return path_stat
+
+
+def _assert_regular_file(
+    path: Path, *, mode: int = 0o644, allow_missing: bool = False
+) -> os.stat_result | None:
+    try:
+        path_stat = path.lstat()
+    except FileNotFoundError:
+        if allow_missing:
+            return None
+        raise TrayIconError(f"required file is missing: {path}") from None
+    if stat.S_ISLNK(path_stat.st_mode) or not stat.S_ISREG(path_stat.st_mode):
+        raise TrayIconError(f"path is not a regular file: {path}")
+    if path_stat.st_uid != 0 or path_stat.st_gid != 0:
+        raise TrayIconError(f"file is not owned by root:root: {path}")
+    if stat.S_IMODE(path_stat.st_mode) != mode:
+        raise TrayIconError(f"file mode is not {mode:04o}: {path}")
+    if path_stat.st_nlink != 1:
+        raise TrayIconError(f"file has unexpected hard links: {path}")
+    return path_stat
+
+
+def _assert_formula_namespace() -> None:
+    _assert_real_directory(CONFIG_ROOT, 0o755)
+    _assert_regular_file(CONFIG_OWNER, mode=0o644)
+    try:
+        owner_text = CONFIG_OWNER.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise TrayIconError(f"cannot read formula ownership marker: {CONFIG_OWNER}") from error
+    if OWNER_MARKER not in owner_text:
+        raise TrayIconError(f"formula ownership marker is invalid: {CONFIG_OWNER}")
+
+
+def _assert_icon_namespace(*, required: bool = True) -> bool:
+    """Prove that no parent used for an icon mutation is a symlink."""
+    for ancestor in (Path("/"), Path("/usr"), Path("/usr/share")):
+        _assert_real_directory(ancestor)
+    try:
+        PACKAGE_ROOT.lstat()
+    except FileNotFoundError:
+        if required:
+            raise TrayIconError(f"required directory is missing: {PACKAGE_ROOT}") from None
+        return False
+    _assert_real_directory(PACKAGE_ROOT, 0o755)
+    try:
+        ICON_ROOT.lstat()
+    except FileNotFoundError:
+        if required:
+            raise TrayIconError(f"required directory is missing: {ICON_ROOT}") from None
+        return False
+    _assert_real_directory(ICON_ROOT, 0o755)
+    return True
+
+
+def _dpkg_tools_available(*, required: bool = False) -> bool:
+    statuses: list[tuple[Path, os.stat_result | None]] = []
+    for tool in (DPKG_QUERY, DPKG_DIVERT):
+        try:
+            tool_stat = tool.lstat()
+        except FileNotFoundError:
+            tool_stat = None
+        statuses.append((tool, tool_stat))
+    present = [tool_stat is not None for _, tool_stat in statuses]
+    if not any(present):
+        if required:
+            raise TrayIconError("Debian package tools are unavailable")
+        return False
+    if not all(present):
+        raise TrayIconError("Debian package tool installation is incomplete")
+    for tool, tool_stat in statuses:
+        assert tool_stat is not None
+        if stat.S_ISLNK(tool_stat.st_mode) or not stat.S_ISREG(tool_stat.st_mode):
+            raise TrayIconError(f"package tool is not a regular file: {tool}")
+        if tool_stat.st_uid != 0 or tool_stat.st_gid != 0:
+            raise TrayIconError(f"package tool is not owned by root:root: {tool}")
+        if tool_stat.st_nlink != 1 or stat.S_IMODE(tool_stat.st_mode) & 0o022:
+            raise TrayIconError(f"package tool metadata is unsafe: {tool}")
+        if not os.access(tool, os.X_OK):
+            raise TrayIconError(f"package tool is not executable: {tool}")
+    return True
+
+
+def _package_snapshot(*, required: bool) -> PackageSnapshot | None:
+    if not _dpkg_tools_available(required=required):
+        return None
+    query = _run(
+        [
+            str(DPKG_QUERY),
+            "-W",
+            "-f=${db:Status-Status}\t${Version}\n",
+            PACKAGE,
+        ],
+        allowed=(0, 1),
+    )
+    if query.returncode == 1:
+        if query.stdout.strip():
+            raise TrayIconError(f"unexpected dpkg-query output for {PACKAGE}")
+        if required:
+            raise TrayIconError(f"required package is not installed: {PACKAGE}")
+        return None
+    fields = query.stdout.rstrip("\n").split("\t")
+    if len(fields) != 2 or fields[0] != "installed" or not fields[1]:
+        if required:
+            raise TrayIconError(f"required package is not installed: {PACKAGE}")
+        return None
+    version = fields[1]
+
+    listing = _run([str(DPKG_QUERY), "-L", PACKAGE])
+    package_paths = set(listing.stdout.splitlines())
+
+    control = _run(
+        [str(DPKG_QUERY), "--control-path", PACKAGE, "md5sums"]
+    ).stdout.strip()
+    if not control or "\n" in control:
+        raise TrayIconError(f"could not resolve {PACKAGE}'s md5sums file")
+    control_path = Path(control)
+    _assert_regular_file(control_path, mode=0o644)
+    md5s: dict[str, str] = {}
+    try:
+        lines = control_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as error:
+        raise TrayIconError(f"cannot read package hashes: {control_path}") from error
+    for line in lines:
+        fields = line.split(None, 1)
+        if len(fields) != 2 or MD5_RE.fullmatch(fields[0]) is None:
+            raise TrayIconError(f"invalid entry in package hash file: {control_path}")
+        relative = fields[1].removeprefix("./")
+        md5s[relative] = fields[0]
+    owned_icons: set[str] = set()
+    for spec in ICON_SPECS:
+        relative = str(spec.target).removeprefix("/")
+        listed = str(spec.target) in package_paths
+        hashed = relative in md5s
+        if listed != hashed:
+            raise TrayIconError(
+                f"{PACKAGE} file listing and hashes disagree for {spec.target}"
+            )
+        if listed:
+            owned_icons.add(spec.name)
+    return PackageSnapshot(
+        version=version,
+        md5s=md5s,
+        owned_icons=frozenset(owned_icons),
+    )
+
+
+def _package_owns(snapshot: PackageSnapshot, spec: IconSpec) -> bool:
+    return spec.name in snapshot.owned_icons
+
+
+def _require_all_package_icons(snapshot: PackageSnapshot) -> None:
+    missing = [spec.name for spec in ICON_SPECS if not _package_owns(snapshot, spec)]
+    if missing:
+        raise TrayIconError(
+            f"{PACKAGE} no longer provides every managed icon: {', '.join(missing)}; "
+            "run remove to restore forward-compatible package state"
+        )
+
+
+def _package_icon_set_complete(snapshot: PackageSnapshot) -> bool:
+    return all(_package_owns(snapshot, spec) for spec in ICON_SPECS)
+
+
+def _validate_package_file(path: Path, snapshot: PackageSnapshot) -> str:
+    _assert_icon_namespace()
+    _assert_regular_file(path, mode=0o644)
+    logical_name = path.name.removesuffix(".qubes-hud-original")
+    if logical_name not in snapshot.owned_icons:
+        raise TrayIconError(f"{PACKAGE} no longer owns expected path: {path}")
+    relative = str(ICON_ROOT / logical_name).removeprefix("/")
+    expected_md5 = snapshot.md5s.get(relative)
+    if expected_md5 is None or _digest(path, "md5") != expected_md5:
+        raise TrayIconError(f"package-owned content hash changed: {path}")
+    return _digest(path)
+
+
+def _diversion(spec: IconSpec) -> str:
+    _dpkg_tools_available(required=True)
+    owner = _run(
+        [str(DPKG_DIVERT), "--listpackage", str(spec.target)]
+    ).stdout.rstrip("\n")
+    true_name = _run(
+        [str(DPKG_DIVERT), "--truename", str(spec.target)]
+    ).stdout.rstrip("\n")
+    if "\n" in owner or "\n" in true_name:
+        raise TrayIconError(f"ambiguous diversion metadata for {spec.target}")
+    if not owner and true_name == str(spec.target):
+        return "absent"
+    if owner == "LOCAL" and true_name == str(spec.diverted):
+        return "managed"
+    raise TrayIconError(
+        f"foreign or unexpected diversion for {spec.target}: "
+        f"owner={owner or '<none>'}, target={true_name or '<none>'}"
+    )
+
+
+def _add_diversion(spec: IconSpec) -> None:
+    _assert_icon_namespace()
+    _run(
+        [
+            str(DPKG_DIVERT),
+            "--local",
+            "--divert",
+            str(spec.diverted),
+            "--rename",
+            "--add",
+            str(spec.target),
+        ]
+    )
+
+
+def _add_diversion_metadata(spec: IconSpec) -> None:
+    _assert_icon_namespace()
+    _run(
+        [
+            str(DPKG_DIVERT),
+            "--local",
+            "--divert",
+            str(spec.diverted),
+            "--no-rename",
+            "--add",
+            str(spec.target),
+        ]
+    )
+
+
+def _remove_diversion(spec: IconSpec) -> None:
+    _assert_icon_namespace()
+    _run(
+        [
+            str(DPKG_DIVERT),
+            "--local",
+            "--divert",
+            str(spec.diverted),
+            "--rename",
+            "--remove",
+            str(spec.target),
+        ]
+    )
+
+
+def _remove_diversion_metadata(spec: IconSpec) -> None:
+    _assert_icon_namespace(required=False)
+    _run(
+        [
+            str(DPKG_DIVERT),
+            "--local",
+            "--divert",
+            str(spec.diverted),
+            "--no-rename",
+            "--remove",
+            str(spec.target),
+        ]
+    )
+
+
+def _atomic_icon_move(source: Path, destination: Path) -> None:
+    _assert_icon_namespace()
+    if destination.exists() or destination.is_symlink():
+        raise TrayIconError(f"refusing to replace existing recovery target: {destination}")
+    os.replace(source, destination)
+    _fsync_directory(ICON_ROOT)
+
+
+def _validate_hash(value: object, field: str) -> str:
+    if not isinstance(value, str) or SHA256_RE.fullmatch(value) is None:
+        raise TrayIconError(f"ownership record has invalid {field}")
+    return value
+
+
+def _validate_record_data(value: object) -> dict[str, object]:
+    expected_keys = {
+        "schema",
+        "owner",
+        "manager",
+        "phase",
+        "art_revision",
+        "desired_revision",
+        "package",
+        "package_version",
+        "icons",
+    }
+    if not isinstance(value, dict) or set(value) != expected_keys:
+        raise TrayIconError("sdwdate ownership record has an invalid schema")
+    if (
+        type(value["schema"]) is not int
+        or value["schema"] != RECORD_SCHEMA
+        or value["owner"] != OWNER_MARKER
+    ):
+        raise TrayIconError("sdwdate ownership record is not owned by this formula")
+    if value["manager"] != MANAGER_NAME or value["package"] != PACKAGE:
+        raise TrayIconError("sdwdate ownership record targets an unexpected manager")
+    if value["phase"] not in ("installing", "installed", "removing"):
+        raise TrayIconError("sdwdate ownership record has an invalid phase")
+    if type(value["art_revision"]) is not int or value["art_revision"] < 1:
+        raise TrayIconError("sdwdate ownership record has an invalid art revision")
+    desired_revision = value["desired_revision"]
+    if desired_revision is not None and (
+        type(desired_revision) is not int or desired_revision < 1
+    ):
+        raise TrayIconError("sdwdate ownership record has an invalid desired revision")
+    if value["phase"] == "installed" and desired_revision is not None:
+        raise TrayIconError("installed sdwdate record cannot have pending artwork")
+    if value["phase"] == "installing" and desired_revision is None:
+        raise TrayIconError("installing sdwdate record lacks pending artwork")
+    if not isinstance(value["package_version"], str) or "\n" in value["package_version"]:
+        raise TrayIconError("sdwdate ownership record has an invalid package version")
+
+    icons = value["icons"]
+    if not isinstance(icons, dict) or set(icons) != set(SPEC_BY_NAME):
+        raise TrayIconError("sdwdate ownership record has an invalid icon set")
+    for name, details in icons.items():
+        if not isinstance(details, dict) or set(details) != {
+            "managed_sha256",
+            "desired_sha256",
+            "original_sha256",
+        }:
+            raise TrayIconError(f"ownership record fields are invalid for {name}")
+        _validate_hash(details["managed_sha256"], f"managed hash for {name}")
+        desired = details["desired_sha256"]
+        if desired is not None:
+            _validate_hash(desired, f"desired hash for {name}")
+        if value["phase"] == "installing" and desired is None:
+            raise TrayIconError(f"installing record lacks desired hash for {name}")
+        if value["phase"] == "installed" and desired is not None:
+            raise TrayIconError(f"installed record has desired hash for {name}")
+        _validate_hash(details["original_sha256"], f"original hash for {name}")
+    return value
+
+
+def _load_record() -> dict[str, object] | None:
+    try:
+        record_stat = RECORD.lstat()
+    except FileNotFoundError:
+        return None
+    if stat.S_ISLNK(record_stat.st_mode) or not stat.S_ISREG(record_stat.st_mode):
+        raise TrayIconError(f"ownership record is not a regular file: {RECORD}")
+    if (
+        stat.S_IMODE(record_stat.st_mode) != 0o644
+        or record_stat.st_uid != 0
+        or record_stat.st_gid != 0
+        or record_stat.st_nlink != 1
+    ):
+        raise TrayIconError(f"ownership record metadata changed: {RECORD}")
+    try:
+        data = json.loads(RECORD.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise TrayIconError(f"cannot parse ownership record: {RECORD}") from error
+    return _validate_record_data(data)
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _write_record(
+    data: dict[str, object], *, icon_namespace_required: bool = True
+) -> None:
+    _validate_record_data(data)
+    _assert_formula_namespace()
+    _assert_icon_namespace(required=icon_namespace_required)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{RECORD.name}.", dir=CONFIG_ROOT)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            json.dump(data, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, 0o644)
+        os.chown(temporary, 0, 0)
+        os.replace(temporary, RECORD)
+        _fsync_directory(CONFIG_ROOT)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _remove_record() -> None:
+    try:
+        RECORD.unlink()
+    except FileNotFoundError:
+        return
+    _fsync_directory(CONFIG_ROOT)
+
+
+def _atomic_icon_write(spec: IconSpec, contents: bytes) -> None:
+    _assert_icon_namespace()
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{spec.name}.qubes-hud.", dir=ICON_ROOT
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(contents)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, 0o644)
+        os.chown(temporary, 0, 0)
+        os.replace(temporary, spec.target)
+        _fsync_directory(ICON_ROOT)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _icon_hash(path: Path, accepted: set[str], *, allow_missing: bool = False) -> str | None:
+    _assert_icon_namespace()
+    path_stat = _assert_regular_file(path, mode=0o644, allow_missing=allow_missing)
+    if path_stat is None:
+        return None
+    actual = _digest(path)
+    if actual not in accepted:
+        raise TrayIconError(f"managed tray icon content changed: {path}")
+    return actual
+
+
+def _original_hash(
+    spec: IconSpec,
+    snapshot: PackageSnapshot | None,
+    recorded_sha256: str,
+    *,
+    allow_missing_without_package: bool,
+) -> str | None:
+    _assert_icon_namespace()
+    if snapshot is not None and _package_owns(snapshot, spec):
+        return _validate_package_file(spec.diverted, snapshot)
+    path_stat = _assert_regular_file(
+        spec.diverted,
+        mode=0o644,
+        allow_missing=allow_missing_without_package,
+    )
+    if path_stat is None:
+        return None
+    actual = _digest(spec.diverted)
+    if actual != recorded_sha256:
+        raise TrayIconError(f"diverted original content changed: {spec.diverted}")
+    return actual
+
+
+def _art_hashes(art: dict[str, bytes]) -> dict[str, str]:
+    return {name: _bytes_sha256(contents) for name, contents in art.items()}
+
+
+def _new_record(
+    snapshot: PackageSnapshot,
+    original_hashes: dict[str, str],
+    desired_hashes: dict[str, str],
+) -> dict[str, object]:
+    return {
+        "schema": RECORD_SCHEMA,
+        "owner": OWNER_MARKER,
+        "manager": MANAGER_NAME,
+        "phase": "installing",
+        "art_revision": ART_REVISION,
+        "desired_revision": ART_REVISION,
+        "package": PACKAGE,
+        "package_version": snapshot.version,
+        "icons": {
+            name: {
+                "managed_sha256": desired_hashes[name],
+                "desired_sha256": desired_hashes[name],
+                "original_sha256": original_hashes[name],
+            }
+            for name in sorted(SPEC_BY_NAME)
+        },
+    }
+
+
+def _accepted_managed_hashes(record: dict[str, object], name: str) -> set[str]:
+    details = record["icons"][name]
+    accepted = {details["managed_sha256"]}
+    if details["desired_sha256"] is not None:
+        accepted.add(details["desired_sha256"])
+    return accepted
+
+
+def _preflight_unmanaged(snapshot: PackageSnapshot | None) -> None:
+    namespace_present = _assert_icon_namespace(required=snapshot is not None)
+    has_dpkg = _dpkg_tools_available()
+    for spec in ICON_SPECS:
+        if has_dpkg and _diversion(spec) != "absent":
+            raise TrayIconError(f"unowned diversion already exists for {spec.target}")
+        if namespace_present and (spec.diverted.exists() or spec.diverted.is_symlink()):
+            raise TrayIconError(f"unowned diversion backup already exists: {spec.diverted}")
+        if snapshot is None:
+            if namespace_present and (spec.target.exists() or spec.target.is_symlink()):
+                raise TrayIconError(f"unowned sdwdate icon remains without its package: {spec.target}")
+        elif _package_owns(snapshot, spec):
+            _validate_package_file(spec.target, snapshot)
+        elif namespace_present and (spec.target.exists() or spec.target.is_symlink()):
+            raise TrayIconError(f"unowned retired sdwdate icon remains: {spec.target}")
+
+
+def _validate_installed(
+    record: dict[str, object], snapshot: PackageSnapshot
+) -> tuple[bool, dict[str, str | None]]:
+    _assert_icon_namespace()
+    if record["phase"] != "installed":
+        raise TrayIconError("ownership record is not in the installed phase")
+    originals: dict[str, str | None] = {}
+    fresh = (
+        record["art_revision"] == ART_REVISION
+        and record["package_version"] == snapshot.version
+    )
+    current_hashes = _art_hashes(_artwork())
+    for spec in ICON_SPECS:
+        if _diversion(spec) != "managed":
+            raise TrayIconError(f"managed diversion disappeared: {spec.target}")
+        details = record["icons"][spec.name]
+        original = _original_hash(
+            spec,
+            snapshot,
+            details["original_sha256"],
+            allow_missing_without_package=not _package_owns(snapshot, spec),
+        )
+        originals[spec.name] = original
+        _icon_hash(spec.target, {details["managed_sha256"]})
+        if (
+            not _package_owns(snapshot, spec)
+            or original is None
+            or details["managed_sha256"] != current_hashes[spec.name]
+            or details["original_sha256"] != original
+        ):
+            fresh = False
+    return fresh, originals
+
+
+def _validate_installing(
+    record: dict[str, object], snapshot: PackageSnapshot, desired_hashes: dict[str, str]
+) -> None:
+    _assert_icon_namespace()
+    _require_all_package_icons(snapshot)
+    if record["phase"] != "installing":
+        raise TrayIconError("ownership record is not in the installing phase")
+    if record["desired_revision"] != ART_REVISION:
+        raise TrayIconError(
+            "interrupted install was prepared by a different artwork revision"
+        )
+    for spec in ICON_SPECS:
+        details = record["icons"][spec.name]
+        if details["desired_sha256"] != desired_hashes[spec.name]:
+            raise TrayIconError(
+                f"interrupted install expects different artwork for {spec.name}"
+            )
+        diversion = _diversion(spec)
+        if diversion == "absent":
+            if spec.diverted.exists() or spec.diverted.is_symlink():
+                _original_hash(
+                    spec,
+                    snapshot,
+                    details["original_sha256"],
+                    allow_missing_without_package=False,
+                )
+                if spec.target.exists() or spec.target.is_symlink():
+                    raise TrayIconError(
+                        f"both paths exist during interrupted diversion add: {spec.target}"
+                    )
+            else:
+                _validate_package_file(spec.target, snapshot)
+        else:
+            if spec.diverted.exists() or spec.diverted.is_symlink():
+                _original_hash(
+                    spec,
+                    snapshot,
+                    details["original_sha256"],
+                    allow_missing_without_package=False,
+                )
+                _icon_hash(
+                    spec.target,
+                    _accepted_managed_hashes(record, spec.name),
+                    allow_missing=True,
+                )
+            else:
+                # dpkg-divert commits ADD metadata before renaming the file.
+                _validate_package_file(spec.target, snapshot)
+
+
+def _validate_removing(
+    record: dict[str, object], snapshot: PackageSnapshot | None
+) -> None:
+    namespace_present = _assert_icon_namespace(required=snapshot is not None)
+    if record["phase"] not in ("installing", "installed", "removing"):
+        raise TrayIconError("ownership record cannot be removed safely")
+    for spec in ICON_SPECS:
+        details = record["icons"][spec.name]
+        diversion = _diversion(spec)
+        if not namespace_present:
+            continue
+        if diversion == "managed":
+            if spec.diverted.exists() or spec.diverted.is_symlink():
+                _original_hash(
+                    spec,
+                    snapshot,
+                    details["original_sha256"],
+                    allow_missing_without_package=True,
+                )
+                _icon_hash(
+                    spec.target,
+                    _accepted_managed_hashes(record, spec.name),
+                    allow_missing=True,
+                )
+            elif snapshot is not None and _package_owns(snapshot, spec):
+                # dpkg-divert renames REMOVE's backup before committing metadata.
+                _validate_package_file(spec.target, snapshot)
+            elif spec.target.exists() or spec.target.is_symlink():
+                _assert_regular_file(spec.target, mode=0o644)
+                actual = _digest(spec.target)
+                if actual not in (
+                    _accepted_managed_hashes(record, spec.name)
+                    | {details["original_sha256"]}
+                ):
+                    raise TrayIconError(
+                        f"unexpected recovery content for {spec.target}"
+                    )
+            continue
+        if spec.diverted.exists() or spec.diverted.is_symlink():
+            _original_hash(
+                spec,
+                snapshot,
+                details["original_sha256"],
+                allow_missing_without_package=True,
+            )
+            if spec.target.exists() or spec.target.is_symlink():
+                raise TrayIconError(
+                    f"both paths exist after interrupted diversion removal: {spec.target}"
+                )
+            continue
+        if snapshot is not None and _package_owns(snapshot, spec):
+            _validate_package_file(spec.target, snapshot)
+        elif spec.target.exists() or spec.target.is_symlink():
+            _assert_regular_file(spec.target, mode=0o644)
+            if _digest(spec.target) != details["original_sha256"]:
+                raise TrayIconError(f"unowned file remains after diversion removal: {spec.target}")
+
+
+def _prepare_update(
+    record: dict[str, object],
+    snapshot: PackageSnapshot,
+    originals: dict[str, str | None],
+    desired_hashes: dict[str, str],
+) -> dict[str, object]:
+    pending = json.loads(json.dumps(record))
+    pending["phase"] = "installing"
+    pending["desired_revision"] = ART_REVISION
+    pending["package_version"] = snapshot.version
+    for name in sorted(SPEC_BY_NAME):
+        if originals[name] is None:
+            raise TrayIconError(f"cannot update without an original for {name}")
+        pending["icons"][name]["desired_sha256"] = desired_hashes[name]
+        pending["icons"][name]["original_sha256"] = originals[name]
+    return _validate_record_data(pending)
+
+
+def _finish_record(
+    record: dict[str, object], snapshot: PackageSnapshot, originals: dict[str, str]
+) -> dict[str, object]:
+    completed = json.loads(json.dumps(record))
+    completed["phase"] = "installed"
+    completed["art_revision"] = completed["desired_revision"]
+    completed["desired_revision"] = None
+    completed["package_version"] = snapshot.version
+    for name in sorted(SPEC_BY_NAME):
+        details = completed["icons"][name]
+        details["managed_sha256"] = details["desired_sha256"]
+        details["desired_sha256"] = None
+        details["original_sha256"] = originals[name]
+    return _validate_record_data(completed)
+
+
+def _resume_install(
+    record: dict[str, object], snapshot: PackageSnapshot, art: dict[str, bytes]
+) -> None:
+    _assert_icon_namespace()
+    _require_all_package_icons(snapshot)
+    desired_hashes = _art_hashes(art)
+    _validate_installing(record, snapshot, desired_hashes)
+    for spec in ICON_SPECS:
+        details = record["icons"][spec.name]
+        diversion = _diversion(spec)
+        if diversion == "absent":
+            if spec.diverted.exists() or spec.diverted.is_symlink():
+                _original_hash(
+                    spec,
+                    snapshot,
+                    details["original_sha256"],
+                    allow_missing_without_package=False,
+                )
+                if spec.target.exists() or spec.target.is_symlink():
+                    raise TrayIconError(
+                        f"both paths exist during interrupted diversion add: {spec.target}"
+                    )
+                _add_diversion_metadata(spec)
+            else:
+                _validate_package_file(spec.target, snapshot)
+                _add_diversion(spec)
+            if _diversion(spec) != "managed":
+                raise TrayIconError(f"dpkg did not install diversion for {spec.target}")
+        if not spec.diverted.exists() and not spec.diverted.is_symlink():
+            # Recover ADD after its database commit but before its rename.
+            _validate_package_file(spec.target, snapshot)
+            _atomic_icon_move(spec.target, spec.diverted)
+        _original_hash(
+            spec,
+            snapshot,
+            details["original_sha256"],
+            allow_missing_without_package=False,
+        )
+        actual = _icon_hash(
+            spec.target,
+            _accepted_managed_hashes(record, spec.name),
+            allow_missing=True,
+        )
+        if actual != desired_hashes[spec.name]:
+            _atomic_icon_write(spec, art[spec.name])
+        _icon_hash(spec.target, {desired_hashes[spec.name]})
+
+    final_snapshot = _package_snapshot(required=True)
+    assert final_snapshot is not None
+    _require_all_package_icons(final_snapshot)
+    originals: dict[str, str] = {}
+    for spec in ICON_SPECS:
+        if _diversion(spec) != "managed":
+            raise TrayIconError(f"managed diversion disappeared: {spec.target}")
+        originals[spec.name] = _validate_package_file(spec.diverted, final_snapshot)
+        _icon_hash(spec.target, {desired_hashes[spec.name]})
+    _write_record(_finish_record(record, final_snapshot, originals))
+
+
+def install() -> None:
+    art = _artwork()
+    desired_hashes = _art_hashes(art)
+    snapshot = _package_snapshot(required=False)
+    record = _load_record()
+    if record is not None:
+        _assert_icon_namespace(required=snapshot is not None)
+    if snapshot is None and record is None:
+        _preflight_unmanaged(None)
+        return
+    if snapshot is None:
+        raise TrayIconError(
+            f"{PACKAGE} was removed while its managed diversions still exist; run remove"
+        )
+    if record is None:
+        _preflight_unmanaged(snapshot)
+        if not _package_icon_set_complete(snapshot):
+            return
+        originals = {
+            spec.name: _validate_package_file(spec.target, snapshot)
+            for spec in ICON_SPECS
+        }
+        record = _new_record(snapshot, originals, desired_hashes)
+        _write_record(record)
+    else:
+        _require_all_package_icons(snapshot)
+    if record["phase"] == "removing":
+        raise TrayIconError("sdwdate tray-icon rollback is in progress; run remove")
+    elif record["phase"] == "installed":
+        fresh, originals = _validate_installed(record, snapshot)
+        if fresh:
+            return
+        record = _prepare_update(record, snapshot, originals, desired_hashes)
+        _write_record(record)
+    else:
+        _validate_installing(record, snapshot, desired_hashes)
+    _resume_install(record, snapshot, art)
+
+
+def check() -> bool:
+    snapshot = _package_snapshot(required=False)
+    record = _load_record()
+    if record is not None:
+        _assert_icon_namespace(required=snapshot is not None)
+    if record is None:
+        _preflight_unmanaged(snapshot)
+        return snapshot is None or not _package_icon_set_complete(snapshot)
+    if snapshot is None:
+        _validate_removing(record, None)
+        return False
+    if record["phase"] == "installed":
+        fresh, _ = _validate_installed(record, snapshot)
+        return fresh
+    if record["phase"] == "installing":
+        _validate_installing(record, snapshot, _art_hashes(_artwork()))
+        return False
+    _validate_removing(record, snapshot)
+    return False
+
+
+def validate_removal() -> None:
+    snapshot = _package_snapshot(required=False)
+    record = _load_record()
+    if record is None:
+        _preflight_unmanaged(snapshot)
+        return
+    _validate_removing(record, snapshot)
+
+
+def _unlink_managed_target(spec: IconSpec, accepted: set[str]) -> None:
+    _assert_icon_namespace()
+    actual = _icon_hash(spec.target, accepted, allow_missing=True)
+    if actual is None:
+        return
+    spec.target.unlink()
+    _fsync_directory(ICON_ROOT)
+
+
+def _resume_remove(
+    record: dict[str, object], snapshot: PackageSnapshot | None
+) -> None:
+    namespace_present = _assert_icon_namespace(required=snapshot is not None)
+    _validate_removing(record, snapshot)
+    for spec in ICON_SPECS:
+        details = record["icons"][spec.name]
+        accepted = _accepted_managed_hashes(record, spec.name)
+        diversion = _diversion(spec)
+        if not namespace_present:
+            if diversion == "managed":
+                _remove_diversion_metadata(spec)
+                if _diversion(spec) != "absent":
+                    raise TrayIconError(
+                        f"dpkg did not remove diversion metadata for {spec.target}"
+                    )
+            continue
+
+        package_owns = snapshot is not None and _package_owns(snapshot, spec)
+        backup_present = spec.diverted.exists() or spec.diverted.is_symlink()
+        if diversion == "managed" and backup_present:
+            _original_hash(
+                spec,
+                snapshot,
+                details["original_sha256"],
+                allow_missing_without_package=True,
+            )
+            _unlink_managed_target(spec, accepted)
+            _remove_diversion(spec)
+            if _diversion(spec) != "absent":
+                raise TrayIconError(f"dpkg did not remove diversion for {spec.target}")
+            if spec.diverted.exists() or spec.diverted.is_symlink():
+                raise TrayIconError(f"diversion backup remains after removal: {spec.diverted}")
+        elif diversion == "managed":
+            # Recover REMOVE after its rename but before its database commit.
+            if spec.target.exists() or spec.target.is_symlink():
+                _assert_regular_file(spec.target, mode=0o644)
+                actual = _digest(spec.target)
+                if package_owns:
+                    _validate_package_file(spec.target, snapshot)
+                elif actual in accepted:
+                    _unlink_managed_target(spec, accepted)
+                elif actual != details["original_sha256"]:
+                    raise TrayIconError(f"unexpected recovery content for {spec.target}")
+            elif package_owns:
+                raise TrayIconError(f"package original is missing during recovery: {spec.target}")
+            _remove_diversion_metadata(spec)
+            if _diversion(spec) != "absent":
+                raise TrayIconError(
+                    f"dpkg did not remove diversion metadata for {spec.target}"
+                )
+        elif backup_present:
+            # Recover the theoretical inverse ordering: metadata is absent,
+            # while the already-renamed original is still at the backup path.
+            _original_hash(
+                spec,
+                snapshot,
+                details["original_sha256"],
+                allow_missing_without_package=True,
+            )
+            if spec.target.exists() or spec.target.is_symlink():
+                raise TrayIconError(
+                    f"both paths exist after interrupted diversion removal: {spec.target}"
+                )
+            _atomic_icon_move(spec.diverted, spec.target)
+
+        if package_owns:
+            _validate_package_file(spec.target, snapshot)
+        elif spec.target.exists() or spec.target.is_symlink():
+            _assert_regular_file(spec.target, mode=0o644)
+            if _digest(spec.target) != details["original_sha256"]:
+                raise TrayIconError(f"unexpected file remains after rollback: {spec.target}")
+            _assert_icon_namespace()
+            spec.target.unlink()
+            _fsync_directory(ICON_ROOT)
+        if spec.diverted.exists() or spec.diverted.is_symlink():
+            raise TrayIconError(f"diversion backup remains after recovery: {spec.diverted}")
+    _remove_record()
+
+
+def remove() -> None:
+    snapshot = _package_snapshot(required=False)
+    record = _load_record()
+    if record is None:
+        _preflight_unmanaged(snapshot)
+        return
+    _validate_removing(record, snapshot)
+    if record["phase"] != "removing":
+        removing = json.loads(json.dumps(record))
+        removing["phase"] = "removing"
+        _write_record(
+            _validate_record_data(removing),
+            icon_namespace_required=snapshot is not None,
+        )
+        record = removing
+    _resume_remove(record, snapshot)
+
+
+def _lock() -> int:
+    _assert_real_directory(LOCK.parent)
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(LOCK, flags, 0o600)
+    lock_stat = os.fstat(descriptor)
+    if (
+        not stat.S_ISREG(lock_stat.st_mode)
+        or lock_stat.st_uid != 0
+        or lock_stat.st_gid != 0
+        or stat.S_IMODE(lock_stat.st_mode) != 0o600
+        or lock_stat.st_nlink != 1
+    ):
+        os.close(descriptor)
+        raise TrayIconError(f"unsafe manager lock file: {LOCK}")
+    fcntl.flock(descriptor, fcntl.LOCK_EX)
+    return descriptor
+
+
+def _arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "action", choices=("install", "check", "validate-removal", "remove")
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    arguments = _arguments()
+    lock_descriptor = -1
+    try:
+        if os.geteuid() != 0:
+            raise TrayIconError("sdwdate tray-icon management must run as root")
+        _assert_formula_namespace()
+        lock_descriptor = _lock()
+        if arguments.action == "install":
+            install()
+            print("sdwdate HUD tray icons are installed (or package is absent)")
+            return 0
+        if arguments.action == "check":
+            return 0 if check() else 1
+        if arguments.action == "validate-removal":
+            validate_removal()
+            return 0
+        remove()
+        print("sdwdate HUD tray icons are removed")
+        return 0
+    except (TrayIconError, OSError) as error:
+        print(f"Qubes HUD sdwdate tray icons refused: {error}", file=sys.stderr)
+        return 2
+    finally:
+        if lock_descriptor >= 0:
+            os.close(lock_descriptor)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

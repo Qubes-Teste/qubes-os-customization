@@ -11,4 +11,6 @@ case ":${qubes_hud_xdg_dirs}:" in
 esac
 
 export XDG_CONFIG_DIRS
+GTK_THEME=Qubes-HUD
+export GTK_THEME
 unset qubes_hud_xdg_root qubes_hud_xdg_dirs

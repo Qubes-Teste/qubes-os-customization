@@ -1,7 +1,8 @@
 #!/bin/sh
 # Qubes HUD managed file. Owner: salt/qubes_gui/guest_hud.
-# Enforce Qt's GTK platform adapter when either supported Qt generation
-# provides it. This intentionally overrides an earlier session value.
+# Select Qt's GTK integration when a supported adapter is already present.
+# This preserves the formula's original generic behavior; the Whonix palette
+# is scoped separately through the Sdwdate service and standalone Tor launcher.
 
 for qubes_hud_qgtk in \
   /usr/lib/*/qt5/plugins/platformthemes/libqgtk3.so \
