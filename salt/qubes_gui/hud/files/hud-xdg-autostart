@@ -110,9 +110,11 @@ else
         'Qubes HUD: Picom failed to start; continuing desktop autostart.' >&2
 fi
 
-# This normal dom0 application is assigned to workspace 1 by the HUD config.
+# These normal dom0 applications are assigned to workspace 1 by the HUD config.
 # A repeated startup invocation must not take focus from the current workspace.
-/usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-bindings --background &
+for view in bindings dom0 xen; do
+    /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-bindings --view "$view" --background &
+done
 
 xdg_autostart "${XDG_CONFIG_DIRS-/etc/xdg}"
 xdg_autostart "${XDG_CONFIG_HOME-$HOME/.config}"

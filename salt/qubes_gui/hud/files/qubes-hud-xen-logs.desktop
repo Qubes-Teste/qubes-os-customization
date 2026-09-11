@@ -1,0 +1,12 @@
+# Qubes HUD managed file. Owner: salt/qubes_gui/hud.
+[Desktop Entry]
+Type=Application
+Name=HUD Xen Logs
+Comment=Follow Xen hypervisor messages
+Exec=/usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-bindings --view xen
+TryExec=/usr/local/libexec/qubes-hud/hud-bindings
+Icon=utilities-system-monitor
+Terminal=false
+Categories=System;Monitor;
+OnlyShowIn=i3;I3;
+StartupWMClass=QubesHudXenLogs

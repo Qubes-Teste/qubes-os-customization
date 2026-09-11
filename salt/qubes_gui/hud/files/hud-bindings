@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # Qubes HUD managed file. Owner: salt/qubes_gui/hud.
-"""Searchable HUD bindings using the stock GTK3 and X11 libraries."""
+"""HUD bindings and bounded live logs using the stock GTK3 and X11 libraries."""
 import argparse
 import ctypes as C
 import fcntl
@@ -15,6 +15,7 @@ import sys
 import time
 
 from bindings_keyboard import KeyboardLayout
+from hud_logs import LogFeed
 
 
 P, I, U, S = C.c_void_p, C.c_int, C.c_uint, C.c_char_p
@@ -50,6 +51,30 @@ for name, result, args in [
     ("gtk_label_set_max_width_chars", None, (P, I)),
     ("gtk_scrolled_window_new", P, (P, P)),
     ("gtk_scrolled_window_set_policy", None, (P, I, I)),
+    ("gtk_scrolled_window_get_vadjustment", P, (P,)),
+    ("gtk_adjustment_get_value", C.c_double, (P,)),
+    ("gtk_adjustment_get_upper", C.c_double, (P,)),
+    ("gtk_adjustment_get_page_size", C.c_double, (P,)),
+    ("gtk_text_view_new", P, ()),
+    ("gtk_text_view_set_editable", None, (P, I)),
+    ("gtk_text_view_set_cursor_visible", None, (P, I)),
+    ("gtk_text_view_set_wrap_mode", None, (P, I)),
+    ("gtk_text_view_get_buffer", P, (P,)),
+    ("gtk_text_view_get_visible_rect", None, (P, P)),
+    ("gtk_text_view_get_iter_at_location", I, (P, P, I, I)),
+    ("gtk_text_view_scroll_to_mark", None, (P, P, C.c_double, I, C.c_double, C.c_double)),
+    ("gtk_text_view_scroll_mark_onscreen", None, (P, P)),
+    ("gtk_text_buffer_get_start_iter", None, (P, P)),
+    ("gtk_text_buffer_get_end_iter", None, (P, P)),
+    ("gtk_text_buffer_get_iter_at_line", None, (P, P, I)),
+    ("gtk_text_buffer_get_iter_at_offset", None, (P, P, I)),
+    ("gtk_text_buffer_get_line_count", I, (P,)),
+    ("gtk_text_buffer_get_char_count", I, (P,)),
+    ("gtk_text_buffer_create_mark", P, (P, S, P, I)),
+    ("gtk_text_buffer_move_mark", None, (P, P, P)),
+    ("gtk_text_buffer_insert", None, (P, P, S, I)),
+    ("gtk_text_buffer_delete", None, (P, P, P)),
+    ("gtk_text_iter_forward_line", I, (P,)),
     ("gtk_search_entry_new", P, ()),
     ("gtk_entry_set_placeholder_text", None, (P, S)),
     ("gtk_entry_get_text", S, (P,)),
@@ -76,7 +101,18 @@ connect = bind(gobject, "g_signal_connect_data", C.c_ulong, P, S, CALLBACK, P, P
 unref = bind(gobject, "g_object_unref", None, P)
 TIMER_CALLBACK = C.CFUNCTYPE(I, P)
 timeout_add = bind(glib, "g_timeout_add", U, U, TIMER_CALLBACK, P)
+idle_add = bind(glib, "g_idle_add", U, TIMER_CALLBACK, P)
 source_remove = bind(glib, "g_source_remove", I, U)
+
+
+class TextIter(C.Structure):
+    # Public GtkTextIter ABI; fields are deliberately opaque to callers.
+    _fields_ = [("dummy" + str(n), kind) for n, kind in enumerate(
+        [P, P, I, I, I, I, I, I, P, P, I, I, I, P], 1)]
+
+
+class Rectangle(C.Structure):
+    _fields_ = [(name, I) for name in ("x", "y", "width", "height")]
 
 CSS = b"""
 @define-color placeholder_text_color #269fbd;
@@ -103,6 +139,11 @@ menuitem:disabled label { color: #267f99; }
 .shortcut-window scrollbar { background: #000000; }
 .shortcut-window scrollbar slider { background: #17576a; min-width: 5px; }
 .shortcut-window .footer { color: #2999b5; font-size: 8pt; }
+.shortcut-window .log-frame { background: #030d13; border: 1px solid #185064;
+    border-radius: 9px; padding: 10px; }
+.shortcut-window textview, .shortcut-window textview text {
+    background: #030d13; color: #32bdd8; font-family: 'Noto Sans Mono'; font-size: 9pt; }
+.shortcut-window textview text selection { color: #57dfff; background: #084455; }
 """
 
 
@@ -164,7 +205,14 @@ def load_data(path):
     return data
 
 
-def acquire_instance(background):
+VIEWS = {
+    "bindings": ("HUD Bindings", "QubesHudBindings"),
+    "dom0": ("HUD Dom0 Logs", "QubesHudDom0Logs"),
+    "xen": ("HUD Xen Logs", "QubesHudXenLogs"),
+}
+
+
+def acquire_instance(background, view="bindings"):
     """Hold one per-user/display flock; focus an existing window on manual launch."""
     runtime = pathlib.Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
     info = runtime.lstat()
@@ -174,13 +222,13 @@ def acquire_instance(background):
     if not re.fullmatch(r':[0-9]+(?:\.[0-9]+)?', display):
         raise RuntimeError('A local X11 DISPLAY is required')
     token = hashlib.sha256(display.split('.', 1)[0].encode()).hexdigest()[:16]
-    fd = os.open(runtime / ('qubes-hud-bindings-' + token + '.lock'),
+    fd = os.open(runtime / ('qubes-hud-' + view + '-' + token + '.lock'),
                  os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
     keep = False
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1:
-            raise RuntimeError('Unexpected HUD Bindings lock file')
+            raise RuntimeError('Unexpected HUD window lock file')
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             keep = True
@@ -193,7 +241,7 @@ def acquire_instance(background):
                     pending = [tree]
                     while pending:
                         node = pending.pop()
-                        if node.get('window_properties', {}).get('class') == 'QubesHudBindings':
+                        if node.get('window_properties', {}).get('class') == VIEWS[view][1]:
                             subprocess.run(['/usr/bin/i3-msg', f'[con_id={int(node["id"])}] focus'],
                                            check=True, stdout=subprocess.DEVNULL, timeout=2)
                             return None
@@ -208,6 +256,7 @@ def acquire_instance(background):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--view", choices=VIEWS, default="bindings")
     parser.add_argument("--data", type=pathlib.Path,
                         default=pathlib.Path(__file__).resolve().with_name('bindings.json'))
     parser.add_argument("--check", action="store_true", help="Validate data and runtime symbols without opening a display")
@@ -216,38 +265,21 @@ def main():
     data = load_data(args.data)
     if args.check:
         KeyboardLayout(check_only=True).close()
-        print('HUD Bindings data and stock GTK3/GLib/X11 runtime symbols verified')
+        LogFeed.check()
+        print('HUD data, log tools and stock GTK3/GLib/X11 runtime symbols verified')
         return
     if not gtk.gtk_init_check(None, None):
         raise RuntimeError("GTK could not open the selected display")
-    instance = acquire_instance(args.background)
+    instance = acquire_instance(args.background, args.view)
     if instance is None:
         return
     try:
-        run_window(data, present=not args.background)
+        run_window(data, present=not args.background, view=args.view)
     finally:
         os.close(instance)
 
 
-def run_window(data, *, present=False):
-    provider = gtk.gtk_css_provider_new()
-    if not gtk.gtk_css_provider_load_from_data(provider, CSS, len(CSS), None):
-        raise RuntimeError("GTK rejected the shortcut style")
-    gtk.gtk_style_context_add_provider_for_screen(gtk.gdk_screen_get_default(), provider, 800)
-    unref(provider)  # The screen retains its own reference.
-
-    window = style(gtk.gtk_window_new(0), "shortcut-window")  # Normal managed toplevel.
-    gtk.gtk_window_set_title(window, b"HUD Bindings")
-    gtk.gtk_window_set_wmclass(window, b"qubes-hud-bindings", b"QubesHudBindings")
-    gtk.gtk_window_set_role(window, b"qubes-hud-bindings")
-    gtk.gtk_window_set_decorated(window, 1)
-    gtk.gtk_window_set_default_size(window, 520, 900)
-    body = box(spacing=15)
-    gtk.gtk_container_set_border_width(body, 20)
-    gtk.gtk_container_add(window, body)
-    header = pack(body, box(spacing=6))
-    pack(header, label("HUD Bindings", "heading"))
-    subtitle = pack(header, label("Reading active keyboard…", "subtitle"))
+def build_bindings(body, subtitle, data, callbacks):
     search = pack(body, gtk.gtk_search_entry_new())
     gtk.gtk_entry_set_placeholder_text(search, b"Find a shortcut or action...")
     scroller = pack(body, gtk.gtk_scrolled_window_new(None, None), True)
@@ -268,7 +300,6 @@ def run_window(data, *, present=False):
                          "entry": entry, "section": section["title"]})
         groups.append((group, rows))
     footer = pack(body, label("", "footer"))
-    callbacks = []  # Keep every C callback alive until gtk_main returns.
 
     @CALLBACK
     def update_filter(_widget, _data):
@@ -284,10 +315,6 @@ def run_window(data, *, present=False):
             gtk.gtk_widget_set_visible(group, int(group_visible))
         text = f"{visible} shortcuts  ·  Type to filter  ·  Scroll to explore"
         gtk.gtk_label_set_text(footer, text.encode())
-
-    @CALLBACK
-    def close_window(_widget, _data):
-        gtk.gtk_main_quit()
 
     keycodes = sorted({int(code) for _group, rows in groups for row in rows
                        for code in re.findall(r"\{k([0-9]+)\}", row["entry"].get("keys_template", ""))})
@@ -329,12 +356,127 @@ def run_window(data, *, present=False):
         update_filter(None, None)
         return 1
 
-    callbacks.extend((update_filter, close_window, update_keyboard))
+    callbacks.extend((update_filter, update_keyboard))
     connect(search, b"search-changed", update_filter, None, None, 0)
+    return search, 1000, update_keyboard, keyboard.close
+
+
+LOG_LINES, LOG_CHARS = 600, 262144
+
+
+def build_logs(body, subtitle, view, callbacks):
+    caption = ("Dom0 journal · Qubes host services" if view == "dom0"
+               else "Xen hypervisor console")
+    gtk.gtk_label_set_text(subtitle, caption.encode())
+    scroller = pack(body, style(gtk.gtk_scrolled_window_new(None, None), "log-frame"), True)
+    gtk.gtk_scrolled_window_set_policy(scroller, 2, 1)
+    text_view = gtk.gtk_text_view_new()
+    gtk.gtk_text_view_set_editable(text_view, 0)
+    gtk.gtk_text_view_set_cursor_visible(text_view, 0)
+    gtk.gtk_text_view_set_wrap_mode(text_view, 3)  # GTK_WRAP_WORD_CHAR
+    gtk.gtk_container_add(scroller, text_view)
+    footer = pack(body, label("", "footer"))
+    buffer = gtk.gtk_text_view_get_buffer(text_view)
+    adjustment = gtk.gtk_scrolled_window_get_vadjustment(scroller)
+    begin, end = TextIter(), TextIter()
+    gtk.gtk_text_buffer_get_end_iter(buffer, C.byref(end))
+    tail = gtk.gtk_text_buffer_create_mark(buffer, None, C.byref(end), 0)
+    anchor = gtk.gtk_text_buffer_create_mark(buffer, None, C.byref(end), 1)
+    feed = LogFeed(view)
+    scroll_idle = 0
+    following = True
+
+    @TIMER_CALLBACK
+    def restore_scroll(_data):
+        nonlocal scroll_idle
+        if following:
+            gtk.gtk_text_view_scroll_mark_onscreen(text_view, tail)
+        else:
+            gtk.gtk_text_view_scroll_to_mark(text_view, anchor, 0., 1, 0., 0.)
+        scroll_idle = 0
+        return 0
+
+    @TIMER_CALLBACK
+    def update_log(_data):
+        nonlocal following, scroll_idle
+        try:
+            addition = feed.poll()
+        except (OSError, ValueError, RuntimeError) as error:
+            gtk.gtk_label_set_text(footer, ("Log reader: " + str(error)).encode())
+            return 1
+        if not scroll_idle:
+            following = (gtk.gtk_adjustment_get_upper(adjustment)
+                         - gtk.gtk_adjustment_get_page_size(adjustment)
+                         - gtk.gtk_adjustment_get_value(adjustment) <= 3)
+        if addition:
+            if not following:
+                rect = Rectangle()
+                gtk.gtk_text_view_get_visible_rect(text_view, C.byref(rect))
+                gtk.gtk_text_view_get_iter_at_location(text_view, C.byref(begin), rect.x, rect.y)
+                gtk.gtk_text_buffer_move_mark(buffer, anchor, C.byref(begin))
+            gtk.gtk_text_buffer_get_end_iter(buffer, C.byref(end))
+            encoded = addition.encode()
+            gtk.gtk_text_buffer_insert(buffer, C.byref(end), encoded, len(encoded))
+            excess = gtk.gtk_text_buffer_get_line_count(buffer) - LOG_LINES - 1
+            if excess > 0:
+                gtk.gtk_text_buffer_get_start_iter(buffer, C.byref(begin))
+                gtk.gtk_text_buffer_get_iter_at_line(buffer, C.byref(end), excess)
+                gtk.gtk_text_buffer_delete(buffer, C.byref(begin), C.byref(end))
+            excess = gtk.gtk_text_buffer_get_char_count(buffer) - LOG_CHARS
+            if excess > 0:
+                gtk.gtk_text_buffer_get_start_iter(buffer, C.byref(begin))
+                gtk.gtk_text_buffer_get_iter_at_offset(buffer, C.byref(end), excess)
+                gtk.gtk_text_iter_forward_line(C.byref(end))
+                gtk.gtk_text_buffer_delete(buffer, C.byref(begin), C.byref(end))
+            if not scroll_idle:
+                scroll_idle = idle_add(restore_scroll, None)
+        mode = "Live" if following else "Scroll to bottom to follow"
+        gtk.gtk_label_set_text(footer, f"{mode} · {feed.status}\nRecent {LOG_LINES} lines · older lines expire".encode())
+        return 1
+
+    def cleanup():
+        if scroll_idle:
+            source_remove(scroll_idle)
+        feed.close()
+
+    callbacks.extend((restore_scroll, update_log))
+    return text_view, 250, update_log, cleanup
+
+
+def run_window(data, *, present=False, view="bindings"):
+    provider = gtk.gtk_css_provider_new()
+    if not gtk.gtk_css_provider_load_from_data(provider, CSS, len(CSS), None):
+        raise RuntimeError("GTK rejected the shortcut style")
+    gtk.gtk_style_context_add_provider_for_screen(gtk.gdk_screen_get_default(), provider, 800)
+    unref(provider)  # The screen retains its own reference.
+
+    title, wmclass = VIEWS[view]
+    role = ("qubes-hud-" + view).encode()
+    window = style(gtk.gtk_window_new(0), "shortcut-window")  # Normal managed toplevel.
+    gtk.gtk_window_set_title(window, title.encode())
+    gtk.gtk_window_set_wmclass(window, role, wmclass.encode())
+    gtk.gtk_window_set_role(window, role)
+    gtk.gtk_window_set_decorated(window, 1)
+    gtk.gtk_window_set_default_size(window, 520, 900)
+    body = box(spacing=15)
+    gtk.gtk_container_set_border_width(body, 20)
+    gtk.gtk_container_add(window, body)
+    header = pack(body, box(spacing=6))
+    pack(header, label(title, "heading"))
+    subtitle = pack(header, label("", "subtitle"))
+    callbacks = []  # Keep every C callback alive until gtk_main returns.
+    builder = build_bindings if view == "bindings" else build_logs
+    focus, interval, tick, cleanup = builder(body, subtitle, data if view == "bindings" else view, callbacks)
+
+    @CALLBACK
+    def close_window(_widget, _data):
+        gtk.gtk_main_quit()
+
+    callbacks.extend((close_window, tick))
     connect(window, b"destroy", close_window, None, None, 0)
     gtk.gtk_widget_show_all(window)
-    update_keyboard(None)
-    gtk.gtk_widget_grab_focus(search)
+    tick(None)
+    gtk.gtk_widget_grab_focus(focus)
     focus_timer = 0
     if present:
         own_xid = gtk.gdk_x11_window_get_xid(gtk.gtk_widget_get_window(window))
@@ -354,26 +496,26 @@ def run_window(data, *, present=False):
             except (OSError, ValueError, subprocess.SubprocessError):
                 pass
             if time.monotonic() >= focus_deadline:
-                print('HUD Bindings opened; i3 did not accept the focus request.', file=sys.stderr)
+                print('HUD window opened; i3 did not accept the focus request.', file=sys.stderr)
                 focus_timer = 0
                 return 0
             return 1
 
         callbacks.append(focus_new_window)
         focus_timer = timeout_add(100, focus_new_window, None)
-    timer = timeout_add(1000, update_keyboard, None)
+    timer = timeout_add(interval, tick, None)
     try:
         gtk.gtk_main()
     finally:
         source_remove(timer)
         if focus_timer:
             source_remove(focus_timer)
-        keyboard.close()
+        cleanup()
 
 
 if __name__ == "__main__":
     try:
         main()
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-        print(f"Shortcut reference: {error}", file=sys.stderr)
+        print(f"HUD window: {error}", file=sys.stderr)
         sys.exit(1)

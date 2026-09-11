@@ -72,8 +72,11 @@
 {% set glow_pixels = '/usr/local/libexec/qubes-hud/glow_pixels.py' %}
 {% set bindings_helper = '/usr/local/libexec/qubes-hud/hud-bindings' %}
 {% set bindings_keyboard = '/usr/local/libexec/qubes-hud/bindings_keyboard.py' %}
+{% set logs_module = '/usr/local/libexec/qubes-hud/hud_logs.py' %}
 {% set bindings_data = '/usr/local/libexec/qubes-hud/bindings.json' %}
 {% set bindings_desktop = '/usr/share/applications/qubes-hud-bindings.desktop' %}
+{% set dom0_logs_desktop = '/usr/share/applications/qubes-hud-dom0-logs.desktop' %}
+{% set xen_logs_desktop = '/usr/share/applications/qubes-hud-xen-logs.desktop' %}
 {% set picom_config = '/usr/local/libexec/qubes-hud/picom.conf' %}
 {% set window_shader = '/usr/local/libexec/qubes-hud/window-glass.glsl' %}
 {% set legacy_picom_config = '/etc/xdg/picom.conf' %}
@@ -249,8 +252,11 @@
     (glow_pixels, [hud_asset_marker]),
     (bindings_helper, [hud_asset_marker]),
     (bindings_keyboard, [hud_asset_marker]),
+    (logs_module, [hud_asset_marker]),
     (bindings_data, [hud_asset_marker]),
     (bindings_desktop, [hud_asset_marker]),
+    (dom0_logs_desktop, [hud_asset_marker]),
+    (xen_logs_desktop, [hud_asset_marker]),
     (picom_config, [owner_marker, hud_asset_marker]),
     (window_shader, [hud_asset_marker]),
     (picom_package_owner, [owner_marker]),
@@ -302,7 +308,9 @@
 {% for path, expected_mode in [
     (glow_helper, '0755'), (glow_pixels, '0644'),
     (bindings_helper, '0755'), (bindings_keyboard, '0644'),
-    (bindings_data, '0644'), (bindings_desktop, '0644')
+    (logs_module, '0644'), (bindings_data, '0644'),
+    (bindings_desktop, '0644'), (dom0_logs_desktop, '0644'),
+    (xen_logs_desktop, '0644')
 ] %}
   {% set target_lstat = salt['file.lstat'](path) %}
   {% if target_lstat|length > 0 and (
@@ -589,6 +597,20 @@ qubes_gui_hud_bindings_keyboard:
     - require:
       - file: qubes_gui_hud_binary_directory
 
+qubes_gui_hud_logs_module:
+  file.managed:
+    - name: {{ logs_module }}
+    - source: salt://qubes_gui/hud/files/hud_logs.py
+    - check_cmd: >-
+        /usr/bin/python3 -c 'import ast, sys;
+        ast.parse(open(sys.argv[1], encoding="utf-8").read(),
+        filename=sys.argv[1])'
+    - user: root
+    - group: root
+    - mode: '0644'
+    - require:
+      - file: qubes_gui_hud_binary_directory
+
 qubes_gui_hud_bindings_helper:
   file.managed:
     - name: {{ bindings_helper }}
@@ -603,6 +625,7 @@ qubes_gui_hud_bindings_helper:
     - require:
       - file: qubes_gui_hud_binary_directory
       - file: qubes_gui_hud_bindings_keyboard
+      - file: qubes_gui_hud_logs_module
 {% if transport == 'direct-dom0' %}
       - cmd: qubes_gui_hud_runtime_packages_direct
 {% else %}
@@ -620,6 +643,7 @@ qubes_gui_hud_bindings_data:
     - require:
       - file: qubes_gui_hud_binary_directory
       - file: qubes_gui_hud_bindings_helper
+      - file: qubes_gui_hud_logs_module
 
 qubes_gui_hud_bindings_runtime:
   cmd.run:
@@ -627,6 +651,7 @@ qubes_gui_hud_bindings_runtime:
     - unless: /usr/bin/python3 -B {{ bindings_helper }} --check
     - require:
       - file: qubes_gui_hud_bindings_keyboard
+      - file: qubes_gui_hud_logs_module
       - file: qubes_gui_hud_bindings_helper
       - file: qubes_gui_hud_bindings_data
 {% if transport == 'direct-dom0' %}
@@ -639,6 +664,26 @@ qubes_gui_hud_bindings_desktop:
   file.managed:
     - name: {{ bindings_desktop }}
     - source: salt://qubes_gui/hud/files/qubes-hud-bindings.desktop
+    - user: root
+    - group: root
+    - mode: '0644'
+    - require:
+      - cmd: qubes_gui_hud_bindings_runtime
+
+qubes_gui_hud_dom0_logs_desktop:
+  file.managed:
+    - name: {{ dom0_logs_desktop }}
+    - source: salt://qubes_gui/hud/files/qubes-hud-dom0-logs.desktop
+    - user: root
+    - group: root
+    - mode: '0644'
+    - require:
+      - cmd: qubes_gui_hud_bindings_runtime
+
+qubes_gui_hud_xen_logs_desktop:
+  file.managed:
+    - name: {{ xen_logs_desktop }}
+    - source: salt://qubes_gui/hud/files/qubes-hud-xen-logs.desktop
     - user: root
     - group: root
     - mode: '0644'
@@ -933,6 +978,8 @@ qubes_gui_hud_xsession:
       - file: qubes_gui_hud_wallpaper
       - file: qubes_gui_hud_wallpaper_owner
       - file: qubes_gui_hud_bindings_desktop
+      - file: qubes_gui_hud_dom0_logs_desktop
+      - file: qubes_gui_hud_xen_logs_desktop
 
 {# Keep the old restart pathname, but replace the custom machine code with
    an auditable launcher only after the official HUD session is installed.

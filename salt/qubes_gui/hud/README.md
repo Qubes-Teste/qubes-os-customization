@@ -108,11 +108,11 @@ Unsupported layouts show unavailable physical-key labels. The descriptions
 remain English and describe the shipped HUD configuration, not arbitrary
 user-defined i3 bindings or independent guest keyboard settings.
 
-Native i3 rules assign the reference to workspace 1 without taking focus from
-another workspace at startup. It fills the workspace while it is the only
-window; as normal windows arrive, i3 allocates it a quarter of the available
-horizontal split. The rules do not reconstruct existing layouts. Reopening
-it after manually changing a layout uses normal i3 insertion behavior.
+Native i3 rules assign all three HUD panes to workspace 1 without taking focus
+from another workspace at startup. Bindings goes left with a quarter of the
+horizontal split, dom0 logs in the middle, and Xen logs at right. The rules
+do not reconstruct existing layouts; reopening after manual rearrangement
+uses normal i3 insertion behavior.
 The layout trial's four terminal windows are not started automatically.
 
 Launch **HUD Bindings** from the HUD application launcher, or run:
@@ -121,24 +121,64 @@ Launch **HUD Bindings** from the HUD application launcher, or run:
 /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-bindings
 ```
 
-A per-user/display lock keeps one reference window open. Repeating the manual
+A per-user/display/view lock keeps one instance of each pane open. Repeating the manual
 launch focuses it; the login command's `--background` option leaves existing
 focus alone. Closing the window releases the lock and it can be reopened.
 The lock is a checked, owner-only file in the session's `XDG_RUNTIME_DIR`.
 
-The application consists of `hud-bindings`, `bindings_keyboard.py` and
-`bindings.json`, installed under `/usr/local/libexec/qubes-hud/`, plus
-`/usr/share/applications/qubes-hud-bindings.desktop`. All are root-owned,
+All three panes share `hud-bindings` for their GTK window, styling, focus and
+instance handling. `bindings_keyboard.py` and `bindings.json` supply the
+reference; `hud_logs.py` supplies both log streams. These files live under
+`/usr/local/libexec/qubes-hud/`, with three launchers under
+`/usr/share/applications/qubes-hud-*.desktop`. All are root-owned,
 with marker/inode/owner/mode collision checks and corresponding rollback.
 It uses only the existing Python standard library and stock GTK3/GLib/X11
 shared libraries through ctypes. No packages or custom compiled binaries are
 added. This is project-maintained dom0 source code, not an official Qubes app.
 
 Salt validates Python syntax and staged JSON, then runs `hud-bindings --check`
-without opening a display to verify the data and required library symbols.
-Startup and the launcher depend on this check succeeding. Salt does not
+without opening a display or reading logs to verify the data, required library
+symbols and existing journalctl executable. Startup and the launchers depend
+on this check succeeding. Salt does not
 reload the running i3 configuration or move existing windows. New assignment
 and login behavior apply at the next HUD login/reboot.
+
+## Live dom0 and Xen logs
+
+**HUD Dom0 Logs** and **HUD Xen Logs** are normal framed, focusable dom0 windows
+using the same cyan styling as HUD Bindings. Open either from the application
+launcher or use the shared command with `--view dom0` or `--view xen`.
+Closing a pane closes its readers; reopening starts with a small recent tail.
+
+The dom0 pane combines the current boot's accessible system and user journal
+with dom0's `guid.*.log`, `qrexec.*.log` and `qubesdb.*.log` files, plus the Xen
+hotplug and domain-builder toolstack logs when present. Journal records include
+dom0 kernel/services, qubesd and other Qubes host activity. Every displayed
+line has a source prefix; independent sources are interleaved as read, not
+retrospectively sorted into one exact timeline.
+
+The Xen pane follows `/var/log/xen/console/hypervisor.log`, the hypervisor
+console already recorded by stock xenconsoled. It is the single below-dom0
+stream on the development machine. `xl dmesg` reads the same console source
+and is not separately added or cleared. A quiet Xen pane is normal when no
+hypervisor events occur.
+
+Neither pane connects to a guest or reads `guest-*.log`, guest journals,
+update output or management-VM execution logs. Readers run as the desktop
+user using existing permissions: no sudo, root GUI, ACL or group changes.
+Protected libvirt detail files remain unread; their unavailability is shown
+and accessible service-journal messages are still included. Other missing or
+inaccessible sources and a stopped journal process are also reported. Journalctl exposes only records permitted to the current user; tighter
+permissions can reduce coverage. The reader never changes those permissions.
+
+Each pane keeps at most 600 recent lines and 262144 characters in memory;
+older text expires. Scroll up to read recent history; scroll to the bottom to
+follow again. Lines wrap, text is selectable and read-only, and no terminal
+escapes or markup are executed. Control/bidi characters are visibly escaped,
+long lines and per-update work are capped. File readers handle truncation,
+replacement and newly created matching files, with at most 256 files and
+4096 directory entries scanned. Reaching a source limit is visible in the
+footer. No log copy is written to disk and no full archive is loaded.
 
 ## Supported platform and official packages
 
@@ -175,8 +215,11 @@ The state expects these sources under `qubes_gui/hud/files/`:
 - `glow_pixels.py`
 - `hud-bindings`
 - `bindings_keyboard.py`
+- `hud_logs.py`
 - `bindings.json`
 - `qubes-hud-bindings.desktop`
+- `qubes-hud-dom0-logs.desktop`
+- `qubes-hud-xen-logs.desktop`
 - `picom.conf`
 - `window-glass.glsl`
 - `qubes-hud.desktop`
@@ -203,7 +246,8 @@ hardcodes a country or language.
 
 `hud-xdg-autostart` starts `/usr/bin/picom` synchronously with
 `/usr/local/libexec/qubes-hud/picom.conf`, starts `hud-glow` in the background
-once Picom succeeds, starts `hud-bindings --background`, then runs the normal
+once Picom succeeds, starts `hud-bindings --background` for each of
+`--view bindings`, `--view dom0` and `--view xen`, then runs the normal
 Qubes system and user XDG autostart entries while filtering any bare
 `picom.desktop` entry. This
 keeps the HUD session on its explicit config and prevents a second,

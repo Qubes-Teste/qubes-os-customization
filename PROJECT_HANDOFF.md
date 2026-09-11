@@ -9,10 +9,9 @@ documentation remains authoritative for individual states and commands:
 - `salt/qubes_gui/hud/README.md`
 - `salt/qubes_gui/guest_hud/README.md`
 
-Always verify the current worktree and history. The previous published
-baseline was `b79a78d` (`Add portable thin cyan icon and tray styling`). On
-2026-09-11 the user authorized committing and publishing the accepted official
-i3/glow changes together with the HUD Bindings Salt integration and these
+Always verify the current worktree and history. The prior published baseline is
+`209af56` (`Use official i3 with rounded glow and HUD bindings`), which includes
+the accepted official i3/glow changes, HUD Bindings Salt integration and these
 project instructions. The latest integration and validation are recorded at
 the end of this document.
 
@@ -1062,3 +1061,125 @@ and its stock `socat`. DNS/TCP occur in that qube, with strict host-key checking
 dom0 does not make a direct network connection. This is only a publication
 transport and is not called by any deployment state or script. No SSH
 configuration, credential or package was added or changed.
+
+
+## Shared HUD log panes (2026-09-11)
+
+The user requested two full-height log panes to the right of HUD Bindings,
+using its normal framed dom0 window and cyan styling. The far-right pane is
+Xen; the middle pane is dom0, including host-recorded Qubes activity. They
+explicitly requested short, auditable, shared source and bounded recent
+history, excluding journals or other logs from inside guest qubes.
+
+`hud-bindings` remains the shared executable and now accepts
+`--view bindings|dom0|xen`. Window creation, CSS, framing, per-view/display
+singleton locking, focus and lifecycle are shared. The bindings content and
+keyboard behavior remain in their original builder/module/data. Both log
+panes use one GtkTextView builder and the adjacent standard-library-only
+`hud_logs.py` reader. All content is literal text; no markup or terminal
+controls are interpreted. Control/bidi characters are visibly escaped and
+malformed UTF-8 replaced. No new binaries, Python modules or packages are used.
+
+Each text buffer retains at most 600 complete lines and 262144 characters;
+long source lines and each update are capped. It follows while at the bottom,
+preserves a visible text mark when scrolling back, and resumes at the bottom.
+Pruning can expire the oldest viewed text; this is recent scrollback, not a
+full archive. No log copy is written to disk. Sources are interleaved as read,
+without pretending their independent clocks/history form an exact total order.
+
+The dom0 reader runs fixed stock `journalctl --boot --lines=80 --follow
+--no-pager --output=short-iso --quiet`, including accessible system and user
+journals from dom0. It also follows the fixed Xen hotplug/domain-builder paths
+and strictly named `guid.*.log`, `qrexec.*.log`, `qubesdb.*.log` files under
+`/var/log/qubes`. File histories can predate the current boot. New files,
+inode replacement and truncation are checked; source count, directory scans,
+read bytes, partial lines and output are bounded. Closing the pane reaps its
+journal process and closes file descriptors. Missing/unreadable sources,
+limits and journal exit are visible in the footer instead of silent failure.
+
+The Xen reader follows only `/var/log/xen/console/hypervisor.log`: stock
+xenconsoled already timestamps and records this genuine hypervisor console.
+It is the only below-dom0 log stream found on this system. `xl dmesg` exposes
+the same source and is not combined a second time or cleared. Guest console
+files (`guest-*.log`), guest journals, update logs and management-VM execution
+logs are deliberately outside both allowlists. Xen daemon and hotplug
+messages run in dom0 and belong in the dom0 pane. Quiet Xen output is normal.
+
+The current desktop user's existing wheel/qubes access suffices for the
+journal and included files. No GUI or reader runs as root, no sudo command is
+used, and no ACL/group/security-policy changes are made. Root-private libvirt
+per-domain detail files remain inaccessible and are identified in the footer;
+accessible libvirt/toolstack journal messages are still included. Journalctl supplies only records accessible to the desktop user; reduced
+permissions on another machine can limit coverage. This is
+custom trusted dom0 source using stock libraries, not a new official Qubes app.
+
+Salt adds the root0644 log module with ownership/marker/inode/mode guards and
+AST checks, plus HUD Dom0 Logs and HUD Xen Logs desktop launchers. The module
+is installed before shared-helper/data/runtime checks; `--check` does not
+open logs or a display. Rollback removes startup/launchers before the shared
+helper/modules without stopping active desktop processes. Native i3 assigns
+all three types to workspace 1 at future logins, placing Bindings left at 25%
+and Xen at right as they arrive. Remaining widths use normal i3 allocation;
+existing manually nested layouts are not reconstructed by a daemon.
+Autostart invokes the same helper for each view with `--background`.
+The four old layout-test terminals are not made persistent.
+
+Validation used only installed tools:
+
+- All 34 repository unittest cases passed, including ten new log tests for
+  allowlists, append/truncate/replacement/new files, fair bounded reads,
+  malformed/control text, source limits, huge error lists, nonregular and
+  symlink refusal, journal failure/exit and child cleanup. Runtime validation,
+  i3 config validation, shell syntax and `git diff --check` passed.
+- Actual stock GTK tests exercised initial tail-follow, scroll pause/resume,
+  preserving the visible line through append/pruning, both buffer limits,
+  literal markup, read-only text and normal close cleanup. The bindings pane
+  retained its same-window DE/EN updates and all 45 bright-cyan key labels.
+  All six application arrival orders produced Bindings/dom0/Xen order,
+  full-height panes, a quarter-width Bindings pane and preserved the existing
+  other workspace's tree/focus. Remaining native i3 fractions vary by arrival
+  order. Evidence is under `/tmp/qubes-hud-logs-test/`; private test displays
+  and owned processes were stopped.
+- Seventy isolated Salt ownership/partial-install/requisite cases passed.
+  Installed Salt rendered 48 init and 41 rollback states; package install,
+  refresh and removal still resolve to `qubes_dom0_update`. No deployment
+  entrypoint adds a direct-network, guest-access, build or package path.
+  Evidence: `/tmp/hud-logs-{salt-fixtures,installed-salt-render}.json`.
+- Formula sync, live dry-run and apply passed all 48 states. Exactly six
+  files changed: the new reader and two launchers, shared GUI, autostart and
+  saved i3 config. A repeated apply passed with zero changes; rollback
+  dry-run passed all 41 states. All nine relevant installed assets match the
+  repository. No running i3 config reload or desktop/qube restart occurred.
+  Deployment results are under `/tmp/qubes-hud-logs-deploy/`.
+- A bounded unprivileged reader smoke test found 156 matching readable dom0
+  files plus the live journal, and the single Xen hypervisor file. The file
+  cap is 256, above current usage; no matching file was omitted by the cap.
+  Only counters/source status were saved, not log contents. Libvirt's private
+  detail files remain unreadable as described above.
+
+Live activation completed with the installed helper:
+
+- The four exact `QubesHudLayoutTest` A/B/C/D windows were rechecked for their
+  original XIDs/roles/PIDs and a sole sleeping foreground bash with no jobs.
+  They closed normally only after both log panes filled their exact new slots.
+  A private matching-layout test had verified this procedure and refusal when
+  an extra window or a busy terminal was present.
+- The existing HUD Bindings process/window was retained, including its
+  426x962 frame at (44,74), its left containing subtree, and focus. It uses the
+  updated shared source on its next launch. The new installed dom0 pane is
+  PID784852/XID88080387, frame (502,74,679,962); Xen is PID784853/XID90177539,
+  frame (1213,74,663,962). Both run as uid1000 and have empty application-error
+  logs. Their readers hold the expected source descriptors.
+- The complete fresh workspace 1 signature was unchanged. Workspace 2 now
+  contains exactly the three HUD windows in the requested order. Future
+  startup remains workspace 1; the running i3 config was not reloaded.
+- Evidence is `/tmp/qubes-hud-logs-deploy/live/validation.json`, with before/
+  after trees and process records. The screen was locked during final capture
+  checking, so no live log screenshot was taken and the lock was left intact.
+  The isolated synthetic render established the shared appearance; actual
+  live visual acceptance remains for the user after unlocking.
+
+The source, Salt integration, documentation and tests are ready for the
+already-authorized GitHub publication. No raw log contents or test screenshots
+are included in the repository. The existing Picom unlock-crash caveat remains
+unrelated and unchanged.
