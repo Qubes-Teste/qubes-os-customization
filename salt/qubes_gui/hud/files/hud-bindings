@@ -16,6 +16,7 @@ import time
 
 from bindings_keyboard import KeyboardLayout
 from hud_logs import LogFeed
+import hud_monitor
 
 
 P, I, U, S = C.c_void_p, C.c_int, C.c_uint, C.c_char_p
@@ -209,6 +210,9 @@ VIEWS = {
     "bindings": ("HUD Bindings", "QubesHudBindings"),
     "dom0": ("HUD Dom0 Logs", "QubesHudDom0Logs"),
     "xen": ("HUD Xen Logs", "QubesHudXenLogs"),
+    "top": ("top · read-only", "QubesHudTop"),
+    "xentop": ("xentop · read-only", "QubesHudXentop"),
+    "cgtop": ("systemd-cgtop · read-only", "QubesHudCgtop"),
 }
 
 
@@ -266,7 +270,8 @@ def main():
     if args.check:
         KeyboardLayout(check_only=True).close()
         LogFeed.check()
-        print('HUD data, log tools and stock GTK3/GLib/X11 runtime symbols verified')
+        hud_monitor.check()
+        print('HUD data, log/monitor tools and stock GTK3/VTE/GLib/X11 symbols verified')
         return
     if not gtk.gtk_init_check(None, None):
         raise RuntimeError("GTK could not open the selected display")
@@ -458,15 +463,20 @@ def run_window(data, *, present=False, view="bindings"):
     gtk.gtk_window_set_role(window, role)
     gtk.gtk_window_set_decorated(window, 1)
     gtk.gtk_window_set_default_size(window, 520, 900)
-    body = box(spacing=15)
-    gtk.gtk_container_set_border_width(body, 20)
+    monitor = view in hud_monitor.COMMANDS
+    body = box(spacing=0 if monitor else 15)
+    gtk.gtk_container_set_border_width(body, 4 if monitor else 20)
     gtk.gtk_container_add(window, body)
-    header = pack(body, box(spacing=6))
-    pack(header, label(title, "heading"))
-    subtitle = pack(header, label("", "subtitle"))
     callbacks = []  # Keep every C callback alive until gtk_main returns.
-    builder = build_bindings if view == "bindings" else build_logs
-    focus, interval, tick, cleanup = builder(body, subtitle, data if view == "bindings" else view, callbacks)
+    if monitor:
+        focus, interval, tick, cleanup = hud_monitor.build(sys.modules[__name__], body, view, callbacks)
+        tick = TIMER_CALLBACK(tick)
+    else:
+        header = pack(body, box(spacing=6))
+        pack(header, label(title, "heading"))
+        subtitle = pack(header, label("", "subtitle"))
+        builder = build_bindings if view == "bindings" else build_logs
+        focus, interval, tick, cleanup = builder(body, subtitle, data if view == "bindings" else view, callbacks)
 
     @CALLBACK
     def close_window(_widget, _data):

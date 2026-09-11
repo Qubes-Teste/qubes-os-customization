@@ -10,9 +10,9 @@ documentation remains authoritative for individual states and commands:
 - `salt/qubes_gui/guest_hud/README.md`
 
 Always verify the current worktree and history. The prior published baseline is
-`209af56` (`Use official i3 with rounded glow and HUD bindings`), which includes
-the accepted official i3/glow changes, HUD Bindings Salt integration and these
-project instructions. The latest integration and validation are recorded at
+`dec2ba1` (`Add shared dom0 and Xen HUD log panes`), which includes
+the accepted official i3/glow changes, HUD Bindings and host-log Salt integration,
+and these project instructions. The latest integration and validation are recorded at
 the end of this document.
 
 ## Goal and non-negotiable constraints
@@ -76,6 +76,9 @@ machine:
 10. On 2026-09-11, the user requested Salt/GitHub promotion of the selected
     keyboard-aware HUD Bindings card window. Future HUD logins place it on
     workspace 1; the current workspace 2 preview is preserved during migration.
+11. The same day, shared dom0/Xen log panes were added, followed by a central
+    block with four terminal panes above Qubes Manager. The complete layout
+    starts on workspace 1 at future HUD logins; live previews use workspace 2.
 
 ## Repository and deployment architecture
 
@@ -1179,7 +1182,123 @@ Live activation completed with the installed helper:
   The isolated synthetic render established the shared appearance; actual
   live visual acceptance remains for the user after unlocking.
 
-The source, Salt integration, documentation and tests are ready for the
-already-authorized GitHub publication. No raw log contents or test screenshots
-are included in the repository. The existing Picom unlock-crash caveat remains
+The log-pane source, Salt integration, documentation and tests were committed
+and published as `dec2ba1`. No raw log contents or test screenshots are
+included in the repository. The existing Picom unlock-crash caveat remains
 unrelated and unchanged.
+
+
+## Complete dom0 workspace: Manager and four terminals (2026-09-11)
+
+The user requested a central block between Bindings and the two journals:
+four terminals across its upper half, with Qubes Manager below. Bindings and
+both log panes remain full-height. Native i3 allocations are 18% / 50% / 16% /
+16%; the upper and lower central halves each receive 50%, with four equal
+upper slots. At 1920x1080 with the current gaps, measured frame widths are
+294px for Bindings, 205px for each upper terminal, 916px for Manager, 271px
+for dom0 logs and 255px for Xen. Manager's 910px client exceeds its actual
+863px minimum width. Other resolutions naturally change those visible widths.
+
+The top row, left to right, is an ordinary interactive stock Xfce terminal,
+standard dom0 `top --secure-mode`, `xentop --delay=2 --full-name`, and
+`systemd-cgtop --delay=2 --depth=2`. No `qvm-top` or `qubes-top` is installed.
+An optional clarification about “Qubes top” received no answer before
+implementation, so standard dom0 top is the stated assumption. Xen domain
+usage is available in the adjacent xentop pane. Existing system accounting
+and desktop-user permissions determine visible metrics; neither is changed.
+The first terminal and the official Qubes Manager remain interactive.
+
+`hud-bindings` now also accepts `--view top|xentop|cgtop`. All six custom panes
+share its framing, cyan CSS, singleton locking, focus and lifecycle. The
+adjacent `hud_monitor.py` builds all three monitor bodies with ctypes calls
+to stock GTK3/VTE/Pango. VTE is already required by the installed stock Xfce
+terminal. No package, Python module, runtime, custom binary, source build or
+permission change is added. Monitor executables and Manager/Xfce launchers
+match their installed official RPM digests; xentop/cgtop were verified to
+work as uid1000 without sudo. Custom code remains trusted dom0 source subject
+to review, while the executables and libraries retain normal signed updates.
+
+Monitor commands use fixed argument arrays and no shell. Native VTE input is
+disabled before spawn, with drag destinations removed, hyperlinks/sixel/bell
+disabled, all ANSI colors mapped to cyan shades, font Noto Sans Mono 8 and
+200 scrollback lines. Selection/copy/focus/scroll remain available. A native
+viewport preserves at least 1280px of terminal width inside the narrow pane;
+horizontal scrolling reveals intact native tables. Fullscreen reveals more
+columns and larger windows expand the terminal. VTE's native PTY spawn/watch
+handles child lifecycle without a Python post-fork callback. Cleanup uses a
+pidfd where available, bounded termination and native GLib reaping. There is
+no interactive shell fallback after failure or exit.
+
+New `hud-workspace` embeds the eight-slot i3 JSON and launches fixed programs
+through public IPC, then exits. It uses a private per-display lock, exact
+classes/roles for HUD panes and the official Qt `-name qubes-hud-manager`
+instance argument for Manager. Manager's class is translated, so matching it
+would be unreliable. All swallow rules require normal windows. i3 ignores
+split-container marks in appended JSON; the helper therefore locates the
+unique new group by all eight leaf marks and explicitly marks it via IPC.
+Real i3 placeholders have XIDs before they contain applications; completion
+checks actual app properties, and old-pane migration only closes verified
+empty placeholder containers after swapping. The original three panes retain
+their XIDs, processes, buffers and search state.
+
+Default startup is workspace 1. Empty targets or the previous three-pane HUD
+can be assembled; foreign windows, duplicate/fullscreen panes or HUD apps
+elsewhere cause a no-op. The completed layout's parent mark prevents repeat
+startup from rearranging the user's windows. Prior focus is restored. The
+helper is not a layout daemon and does not rebuild a partially failed layout
+automatically. A visible startup error leaves the partial layout inspectable;
+normal Qubes XDG startup still continues. The saved i3 configuration assigns
+all HUD types and the dedicated Manager instance to workspace 1, without the
+previous arrival-order edge/resize rules. Explicit live preview uses
+`hud-workspace --workspace 2`; no live i3 reload is needed.
+
+Salt now guards/installs the root0644 monitor module and root0755 workspace
+helper, validates AST/runtime before autostart, and removes startup before
+these owned assets on rollback. Default package transport remains the native
+UpdateVM provider, with no deployment fetch/build/new dependency. Installed
+Salt rendered 51 init and 43 rollback states, and 46 isolated ownership and
+ordering cases passed. The existing 34 tests plus eight new workspace tests
+all pass. Display-free runtime checks, i3 configuration validation, shell
+syntax and whitespace checks pass with installed tooling.
+
+Private real-i3/GTK tests verified empty workspace 1 startup and migration of
+the existing wrapped three-pane workspace 2, with all eight actual clients in
+the requested geometry. Other-workspace tree/focus and all three retained
+HUD XIDs/PIDs were unchanged; repeated startup was an exact no-op and foreign
+occupancy was refused before mutation. Actual typing, clipboard/primary
+paste, direct VTE input/paste APIs and drops could not control monitors;
+selection/copy, focus, resizing and horizontal scrollbar dragging worked.
+Normal close stopped and reaped each monitor child. All private displays,
+apps and journal children were cleaned up. Evidence is under
+`/tmp/qubes-hud-manager-layout-test/`, `/tmp/qubes-hud-monitor-test/`,
+`/tmp/qubes-hud-logs-test/workspace-{empty,reuse}/`, and
+`/tmp/hud-workspace-{salt-fixtures,installed-salt-render}.json`.
+
+Live integration completed using the installed source:
+
+- Formula sync, dry-run and apply passed all 51 states. Five files changed:
+  monitor module, workspace helper, shared frontend, autostart and saved i3
+  configuration. Repeat apply passed with zero changes; rollback dry-run
+  passed all 43 states. Installed file hashes/ownership/modes match the source.
+- The installed `hud-workspace --workspace 2` completed successfully. All
+  eight frames match the measured geometry above. The complete workspace 1
+  structure, window IDs and geometry were unchanged, prior focus was restored,
+  and the running i3 configuration was unchanged. No i3, compositor, desktop,
+  display manager or qube restart was performed.
+- Bindings PID773889/XID67108867, dom0 PID784852/XID88080387 and Xen
+  PID784853/XID90177539 were retained. New terminal PID801414/XID23068675,
+  top PID801411/XID79691779, xentop PID801412/XID73400323, cgtop
+  PID801413/XID75497475 and Manager PID801415/XID81788935 run as uid1000.
+  Each monitor has exactly its expected running unprivileged child process.
+- The custom panes and Manager emitted no application errors. Stock
+  xfce4-terminal reported only that SESSION_MANAGER is unset in this i3
+  session; its normal interactive terminal opened successfully. No session
+  manager was added to suppress this harmless warning.
+- Evidence is under `/tmp/qubes-hud-workspace-deploy/`, including before/after
+  trees, validation, process identities, Salt output and installed hashes.
+  No private log contents, screenshots or temporary test assets are committed.
+  Live visual acceptance remains with the user; Super+2 opens the preview.
+
+The same complete workspace starts on workspace 1 at the next HUD login.
+Publication uses the previously authorized GitHub SSH transport through
+sys-net, with strict host verification and no direct dom0 network route.

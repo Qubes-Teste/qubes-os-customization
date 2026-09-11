@@ -73,6 +73,8 @@
 {% set bindings_helper = '/usr/local/libexec/qubes-hud/hud-bindings' %}
 {% set bindings_keyboard = '/usr/local/libexec/qubes-hud/bindings_keyboard.py' %}
 {% set logs_module = '/usr/local/libexec/qubes-hud/hud_logs.py' %}
+{% set monitor_module = '/usr/local/libexec/qubes-hud/hud_monitor.py' %}
+{% set workspace_helper = '/usr/local/libexec/qubes-hud/hud-workspace' %}
 {% set bindings_data = '/usr/local/libexec/qubes-hud/bindings.json' %}
 {% set bindings_desktop = '/usr/share/applications/qubes-hud-bindings.desktop' %}
 {% set dom0_logs_desktop = '/usr/share/applications/qubes-hud-dom0-logs.desktop' %}
@@ -253,6 +255,8 @@
     (bindings_helper, [hud_asset_marker]),
     (bindings_keyboard, [hud_asset_marker]),
     (logs_module, [hud_asset_marker]),
+    (monitor_module, [hud_asset_marker]),
+    (workspace_helper, [hud_asset_marker]),
     (bindings_data, [hud_asset_marker]),
     (bindings_desktop, [hud_asset_marker]),
     (dom0_logs_desktop, [hud_asset_marker]),
@@ -309,6 +313,7 @@
     (glow_helper, '0755'), (glow_pixels, '0644'),
     (bindings_helper, '0755'), (bindings_keyboard, '0644'),
     (logs_module, '0644'), (bindings_data, '0644'),
+    (monitor_module, '0644'), (workspace_helper, '0755'),
     (bindings_desktop, '0644'), (dom0_logs_desktop, '0644'),
     (xen_logs_desktop, '0644')
 ] %}
@@ -611,6 +616,20 @@ qubes_gui_hud_logs_module:
     - require:
       - file: qubes_gui_hud_binary_directory
 
+qubes_gui_hud_monitor_module:
+  file.managed:
+    - name: {{ monitor_module }}
+    - source: salt://qubes_gui/hud/files/hud_monitor.py
+    - check_cmd: >-
+        /usr/bin/python3 -c 'import ast, sys;
+        ast.parse(open(sys.argv[1], encoding="utf-8").read(),
+        filename=sys.argv[1])'
+    - user: root
+    - group: root
+    - mode: '0644'
+    - require:
+      - file: qubes_gui_hud_binary_directory
+
 qubes_gui_hud_bindings_helper:
   file.managed:
     - name: {{ bindings_helper }}
@@ -626,6 +645,7 @@ qubes_gui_hud_bindings_helper:
       - file: qubes_gui_hud_binary_directory
       - file: qubes_gui_hud_bindings_keyboard
       - file: qubes_gui_hud_logs_module
+      - file: qubes_gui_hud_monitor_module
 {% if transport == 'direct-dom0' %}
       - cmd: qubes_gui_hud_runtime_packages_direct
 {% else %}
@@ -644,6 +664,7 @@ qubes_gui_hud_bindings_data:
       - file: qubes_gui_hud_binary_directory
       - file: qubes_gui_hud_bindings_helper
       - file: qubes_gui_hud_logs_module
+      - file: qubes_gui_hud_monitor_module
 
 qubes_gui_hud_bindings_runtime:
   cmd.run:
@@ -652,6 +673,7 @@ qubes_gui_hud_bindings_runtime:
     - require:
       - file: qubes_gui_hud_bindings_keyboard
       - file: qubes_gui_hud_logs_module
+      - file: qubes_gui_hud_monitor_module
       - file: qubes_gui_hud_bindings_helper
       - file: qubes_gui_hud_bindings_data
 {% if transport == 'direct-dom0' %}
@@ -659,6 +681,30 @@ qubes_gui_hud_bindings_runtime:
 {% else %}
       - pkg: qubes_gui_hud_runtime_packages_qubes_updatevm
 {% endif %}
+
+qubes_gui_hud_workspace_helper:
+  file.managed:
+    - name: {{ workspace_helper }}
+    - source: salt://qubes_gui/hud/files/hud-workspace
+    - check_cmd: >-
+        /usr/bin/python3 -c 'import ast, sys;
+        ast.parse(open(sys.argv[1], encoding="utf-8").read(),
+        filename=sys.argv[1])'
+    - user: root
+    - group: root
+    - mode: '0755'
+    - require:
+      - file: qubes_gui_hud_binary_directory
+      - cmd: qubes_gui_hud_bindings_runtime
+
+qubes_gui_hud_workspace_runtime:
+  cmd.run:
+    - name: /usr/bin/python3 -B {{ workspace_helper }} --check
+    - unless: /usr/bin/python3 -B {{ workspace_helper }} --check
+    - require:
+      - file: qubes_gui_hud_workspace_helper
+      - cmd: qubes_gui_hud_bindings_runtime
+      - cmd: qubes_gui_hud_official_i3_binary_present
 
 qubes_gui_hud_bindings_desktop:
   file.managed:
@@ -720,6 +766,7 @@ qubes_gui_hud_autostart_helper:
       - file: qubes_gui_hud_picom_config
       - cmd: qubes_gui_hud_glow_runtime
       - cmd: qubes_gui_hud_bindings_runtime
+      - cmd: qubes_gui_hud_workspace_runtime
 
 {% if legacy_picom_owned %}
 qubes_gui_hud_remove_owned_legacy_picom_config:

@@ -204,11 +204,11 @@ set $ws10 "10"
 # Switch to workspace.
 workspace_auto_back_and_forth yes
 
-# The three ordinary dom0 HUD panes share workspace 1 at future logins.
-# Order the outer panes as they arrive, without taking focus at startup.
-assign [class="^QubesHud(Bindings|Dom0Logs|XenLogs)$"] workspace number 1
-no_focus [class="^QubesHud(Bindings|Dom0Logs|XenLogs)$"]
-for_window [class="^QubesHud(Bindings|Dom0Logs|XenLogs)$"] [class="^QubesHudBindings$" workspace="1"] move left; [class="^QubesHudBindings$" workspace="1"] move left; [class="^QubesHudXenLogs$" workspace="1"] move right; [class="^QubesHudXenLogs$" workspace="1"] move right; [class="^QubesHudBindings$" workspace="1"] resize set width 25 ppt
+# hud-workspace supplies exact native slots; these rules also place reopened panes.
+assign [class="^QubesHud(Bindings|Dom0Logs|XenLogs|Terminal|Top|Xentop|Cgtop)$"] workspace number 1
+no_focus [class="^QubesHud(Bindings|Dom0Logs|XenLogs|Terminal|Top|Xentop|Cgtop)$"]
+assign [instance="^qubes-hud-manager$"] workspace number 1
+no_focus [instance="^qubes-hud-manager$"]
 
 bindsym $mod+Tab workspace next
 bindsym $mod+Shift+Tab workspace prev

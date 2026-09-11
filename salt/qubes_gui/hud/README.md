@@ -108,12 +108,11 @@ Unsupported layouts show unavailable physical-key labels. The descriptions
 remain English and describe the shipped HUD configuration, not arbitrary
 user-defined i3 bindings or independent guest keyboard settings.
 
-Native i3 rules assign all three HUD panes to workspace 1 without taking focus
-from another workspace at startup. Bindings goes left with a quarter of the
-horizontal split, dom0 logs in the middle, and Xen logs at right. The rules
-do not reconstruct existing layouts; reopening after manual rearrangement
-uses normal i3 insertion behavior.
-The layout trial's four terminal windows are not started automatically.
+The startup helper supplies native i3 slots on workspace 1: Bindings at left,
+four terminals above Qubes Manager in the middle, then dom0 and Xen logs on the
+right. Focus returns to the previously focused window. Repeated startup keeps
+the existing arrangement; unrelated occupied workspaces are left alone.
+Reopening an individual closed pane uses normal i3 insertion behavior.
 
 Launch **HUD Bindings** from the HUD application launcher, or run:
 
@@ -126,20 +125,23 @@ launch focuses it; the login command's `--background` option leaves existing
 focus alone. Closing the window releases the lock and it can be reopened.
 The lock is a checked, owner-only file in the session's `XDG_RUNTIME_DIR`.
 
-All three panes share `hud-bindings` for their GTK window, styling, focus and
-instance handling. `bindings_keyboard.py` and `bindings.json` supply the
-reference; `hud_logs.py` supplies both log streams. These files live under
+Bindings, both log panes and all three read-only monitors share `hud-bindings`
+for their GTK window, styling, focus and instance handling. `bindings_keyboard.py`
+and `bindings.json` supply the reference; `hud_logs.py` supplies both log streams and `hud_monitor.py` supplies
+the three native VTE monitor terminals. `hud-workspace` prepares the layout and
+launches the fixed applications. These files live under
 `/usr/local/libexec/qubes-hud/`, with three launchers under
 `/usr/share/applications/qubes-hud-*.desktop`. All are root-owned,
 with marker/inode/owner/mode collision checks and corresponding rollback.
-It uses only the existing Python standard library and stock GTK3/GLib/X11
-shared libraries through ctypes. No packages or custom compiled binaries are
-added. This is project-maintained dom0 source code, not an official Qubes app.
+It uses only the existing Python standard library and stock GTK3/GLib/X11,
+VTE and Pango shared libraries through ctypes. No packages or custom compiled
+binaries are added. This is project-maintained dom0 source code, not an official Qubes app.
 
 Salt validates Python syntax and staged JSON, then runs `hud-bindings --check`
 without opening a display or reading logs to verify the data, required library
-symbols and existing journalctl executable. Startup and the launchers depend
-on this check succeeding. Salt does not
+symbols and existing log/monitor executables. `hud-workspace --check` validates
+its embedded layout and stock launch commands without opening a display.
+Startup and the launchers depend on this check succeeding. Salt does not
 reload the running i3 configuration or move existing windows. New assignment
 and login behavior apply at the next HUD login/reboot.
 
@@ -180,6 +182,62 @@ replacement and newly created matching files, with at most 256 files and
 4096 directory entries scanned. Reaching a source limit is visible in the
 footer. No log copy is written to disk and no full archive is loaded.
 
+## Manager and terminal block
+
+The complete workspace has these columns: Bindings (18%), a central block
+(50%), dom0 logs (16%) and Xen logs (16%). In the central block, four equal
+terminals fill the upper half; Qubes Manager fills the lower half. Native i3
+gaps mean the visible frame widths differ slightly despite equal allocations.
+
+The top row runs, left to right:
+
+1. An ordinary interactive `xfce4-terminal` in the desktop user's home.
+2. Dom0's standard `top --secure-mode`.
+3. `xentop --delay=2 --full-name`.
+4. `systemd-cgtop --delay=2 --depth=2`.
+
+There is no separate `qvm-top`/`qubes-top` installed on the development machine;
+the second pane therefore uses standard dom0 process top. The other monitors
+show Xen domain usage and dom0 cgroup usage respectively. Cgroup metrics depend
+on accounting already enabled by the system; the HUD does not enable any.
+All commands run with the desktop user's existing permissions.
+
+The three monitor panes use the stock VTE terminal widget with input disabled
+before spawning their fixed command. Typing, terminal paste and text drops
+are disabled; selection, scrolling, focus and Ctrl+Shift+C copying remain.
+Hyperlinks, sixel graphics and audible bells are disabled. The palette uses
+cyan shades and retains 200 scrollback lines. There is no shell behind a
+monitor and no shell fallback after it exits. Normal close terminates and
+reaps its child. The first terminal and Qubes Manager remain interactive.
+
+Each terminal uses Noto Sans Mono 8 locally, leaving other terminal windows'
+settings intact. On a 1920px display the top panes show about 30 columns at
+once. The monitors keep a wider terminal canvas so native tables remain
+intact; the horizontal scrollbar reveals the remaining columns. Super+F
+expands the focused pane; Super+F again returns to the layout.
+
+`hud-workspace` embeds the layout and uses public i3 IPC, then exits. It launches
+the official Manager with Qt's `-name qubes-hud-manager` instance argument;
+matching does not depend on its translated class/title. It creates a layout
+on an empty target or extends the previous three-pane HUD while retaining
+those window IDs. Other windows, fullscreen panes, an existing complete HUD,
+or HUD applications already open elsewhere prevent reconstruction. A private
+per-display lock prevents concurrent launchers. It does not run a layout daemon.
+An assembly failure is reported without preventing normal Qubes desktop
+autostart from continuing.
+
+Normal login uses workspace 1. To explicitly assemble a preview on a suitable
+workspace 2 using the same installed source:
+
+```sh
+/usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-workspace --workspace 2
+```
+
+Individual monitor panes can be reopened with the shared `hud-bindings` command
+and `--view top`, `--view xentop` or `--view cgtop`. A repeated manual launch
+focuses the existing pane. General HUD rollback removes the new owned sources
+and startup hook without closing applications or restarting the live desktop.
+
 ## Supported platform and official packages
 
 Application is refused unless all of these checks pass:
@@ -216,6 +274,8 @@ The state expects these sources under `qubes_gui/hud/files/`:
 - `hud-bindings`
 - `bindings_keyboard.py`
 - `hud_logs.py`
+- `hud_monitor.py`
+- `hud-workspace`
 - `bindings.json`
 - `qubes-hud-bindings.desktop`
 - `qubes-hud-dom0-logs.desktop`
@@ -246,8 +306,8 @@ hardcodes a country or language.
 
 `hud-xdg-autostart` starts `/usr/bin/picom` synchronously with
 `/usr/local/libexec/qubes-hud/picom.conf`, starts `hud-glow` in the background
-once Picom succeeds, starts `hud-bindings --background` for each of
-`--view bindings`, `--view dom0` and `--view xen`, then runs the normal
+once Picom succeeds, runs `hud-workspace` to prepare workspace 1 and launch
+its fixed applications, then runs the normal
 Qubes system and user XDG autostart entries while filtering any bare
 `picom.desktop` entry. This
 keeps the HUD session on its explicit config and prevents a second,

@@ -1,0 +1,189 @@
+#!/usr/bin/python3
+# Qubes HUD managed file. Owner: salt/qubes_gui/hud.
+"""Open the HUD workspace once, without rearranging unrelated applications."""
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import tempfile
+import time
+
+HERE = Path(__file__).resolve().parent
+MARK = 'qubes-hud-workspace'
+CLASSES = {'bindings': 'QubesHudBindings', 'dom0': 'QubesHudDom0Logs',
+           'xen': 'QubesHudXenLogs', 'top': 'QubesHudTop',
+           'xentop': 'QubesHudXentop', 'cgtop': 'QubesHudCgtop',
+           'terminal': 'QubesHudTerminal', 'manager': 'Qube Manager'}
+
+
+def walk(node):
+    yield node
+    for child in node.get('nodes', []) + node.get('floating_nodes', []):
+        yield from walk(child)
+
+
+def identify(node):
+    properties = node.get('window_properties') or {}
+    for view, wmclass in CLASSES.items():
+        if view == 'manager':
+            if properties.get('instance') == 'qubes-hud-manager':
+                return view  # The official Manager's class is translated.
+        elif (properties.get('class') == wmclass
+              and properties.get('window_role') == 'qubes-hud-' + view):
+            return view
+    return None
+
+
+def commands():
+    result = {view: ['/usr/bin/python3', '-B', str(HERE / 'hud-bindings'),
+                     '--view', view, '--background']
+              for view in CLASSES if view not in ('terminal', 'manager')}
+    result['terminal'] = ['/usr/bin/xfce4-terminal', '--disable-server',
+        '--class=QubesHudTerminal', '--role=qubes-hud-terminal', '--title=Terminal',
+        '--dynamic-title-mode=none', '--hide-menubar', '--hide-toolbar',
+        '--font=Noto Sans Mono 8', '--working-directory=' + str(Path.home())]
+    result['manager'] = ['/usr/bin/qubes-qube-manager', '-name', 'qubes-hud-manager']
+    return result
+
+
+def layout():
+    def slot(view, percent):
+        match = {'class': '^' + CLASSES[view] + '$', 'window_type': 'normal'}
+        if view == 'manager':
+            del match['class']
+        match['instance' if view == 'manager' else 'window_role'] = '^qubes-hud-' + view + '$'
+        return {'type': 'con', 'name': view, 'percent': percent,
+                'marks': [MARK + '-' + view], 'swallows': [match]}
+    return {'type': 'con', 'layout': 'splith', 'marks': [MARK], 'nodes': [
+        slot('bindings', .18),
+        {'type': 'con', 'layout': 'splitv', 'percent': .50, 'nodes': [
+            {'type': 'con', 'layout': 'splith', 'percent': .50,
+             'nodes': [slot(view, .25) for view in ('terminal', 'top', 'xentop', 'cgtop')]},
+            slot('manager', .50)]},
+        slot('dom0', .16), slot('xen', .16)]}
+
+
+def ipc(command, *, query=False):
+    argv = ['/usr/bin/i3-msg'] + (['-t', command] if query else [command])
+    result = json.loads(subprocess.check_output(argv, timeout=3))
+    if not query and not all(item.get('success') for item in result):
+        raise RuntimeError('i3 rejected a HUD layout command')
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--workspace', type=int, choices=range(1, 11), default=1)
+    parser.add_argument('--check', action='store_true')
+    args = parser.parse_args()
+    for program in {command[0] for command in commands().values()} | {'/usr/bin/i3-msg'}:
+        if not Path(program).is_file() or not os.access(program, os.X_OK):
+            raise RuntimeError('Required stock executable unavailable: ' + program)
+    if not (HERE / 'hud-bindings').is_file():
+        raise RuntimeError('Shared HUD window helper is unavailable')
+    slots = [node for node in walk(layout()) if node.get('swallows')]
+    if len(slots) != 8 or {node['name'] for node in slots} != set(CLASSES):
+        raise RuntimeError('Invalid HUD workspace layout')
+    if args.check:
+        print('HUD workspace layout and stock launch commands verified')
+        return
+    runtime = Path(os.environ.get('XDG_RUNTIME_DIR', '/run/user/' + str(os.getuid())))
+    info = runtime.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise RuntimeError('A private, owned XDG_RUNTIME_DIR is required')
+    display = os.environ.get('DISPLAY', '')
+    if not re.fullmatch(r':[0-9]+(?:\.[0-9]+)?', display):
+        raise RuntimeError('A local X11 display is required')
+    lock = runtime / ('qubes-hud-workspace-' + display[1:].split('.')[0] + '.lock')
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    try:
+        info = os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1):
+            raise RuntimeError('Unexpected HUD workspace lock file')
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        launch(str(args.workspace), runtime)
+    finally:
+        os.close(fd)
+
+
+def launch(workspace, runtime):
+    tree = ipc('get_tree', query=True)
+    if any(MARK in node.get('marks', []) for node in walk(tree)):
+        return  # Repeated startup preserves the user's arrangement.
+    target = next((node for node in walk(tree)
+                   if node['type'] == 'workspace' and node['name'] == workspace), None)
+    existing = {}
+    for node in walk(target) if target else []:
+        if not node.get('window'):
+            continue
+        view = identify(node)
+        if view not in ('bindings', 'dom0', 'xen') or view in existing or node.get('fullscreen_mode'):
+            print('HUD workspace is occupied; existing windows left in place.')
+            return
+        existing[view] = node['id']
+    # Do not create a second layout around panes already open elsewhere.
+    owned_ids = set(existing.values())
+    if any(node.get('window') and identify(node)
+           and node['id'] not in owned_ids for node in walk(tree)):
+        print('HUD applications are already open elsewhere; layout left in place.')
+        return
+    previous = next(node['id'] for node in walk(tree) if node.get('focused'))
+    try:
+        with tempfile.TemporaryDirectory(prefix='qubes-hud-layout-', dir=runtime) as directory:
+            path = Path(directory) / 'layout.json'
+            path.write_text(json.dumps(layout()))
+            ipc('workspace number ' + workspace)
+            if target:
+                ipc('[con_id=' + str(target['id']) + '] focus')
+            ipc('append_layout ' + json.dumps(str(path)))
+        current = ipc('get_tree', query=True)
+        # i3 preserves leaf marks from JSON, but drops marks on split containers.
+        slot_marks = {MARK + '-' + view for view in CLASSES}
+        groups = [node for node in walk(current)
+                  if node['type'] == 'con' and len(node.get('nodes', [])) == 4
+                  and slot_marks <= {mark for child in walk(node)
+                                     for mark in child.get('marks', [])}]
+        if len(groups) != 1:
+            raise RuntimeError('Expected one newly appended HUD layout')
+        ipc(f'[con_id={groups[0]["id"]}] mark --add {MARK}')
+        for view, old_id in existing.items():
+            slot = next(node for node in walk(current) if MARK + '-' + view in node.get('marks', []))
+            ipc(f'[con_id={old_id}] swap container with con_id {slot["id"]}')
+            placeholder = next(node for node in walk(ipc('get_tree', query=True)) if node['id'] == slot['id'])
+            if (placeholder.get('window_properties') or {}).get('class') or not placeholder.get('swallows'):
+                raise RuntimeError('Expected an empty layout placeholder')
+            ipc(f'[con_id={slot["id"]}] kill')
+        for view, argv in commands().items():
+            if view not in existing:
+                subprocess.Popen(argv, stdin=subprocess.DEVNULL, start_new_session=True)
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            current = ipc('get_tree', query=True)
+            group = next((node for node in walk(current) if MARK in node.get('marks', [])), None)
+            if group and {identify(node) for node in walk(group)} - {None} == set(CLASSES):
+                for node in walk(group):
+                    for mark in node.get('marks', []):
+                        if mark in slot_marks:
+                            ipc('unmark ' + mark)
+                return
+            time.sleep(.1)
+        raise RuntimeError('A HUD application did not fill its slot; inspect workspace ' + workspace)
+    finally:
+        # Normal startup and the explicit preview restore the prior focus.
+        subprocess.run(['/usr/bin/i3-msg', f'[con_id={previous}] focus'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        raise SystemExit('HUD workspace: ' + str(error))
