@@ -120,71 +120,75 @@ Launch **HUD Bindings** from the HUD application launcher, or run:
 /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-bindings
 ```
 
-A per-user/display/view lock keeps one instance of each pane open. Repeating the manual
+A per-user/display lock keeps one Bindings window open. Repeating its manual
 launch focuses it; the login command's `--background` option leaves existing
 focus alone. Closing the window releases the lock and it can be reopened.
 The lock is a checked, owner-only file in the session's `XDG_RUNTIME_DIR`.
 
-Bindings, both log panes and all three read-only monitors share `hud-bindings`
-for their GTK window, styling, focus and instance handling. `bindings_keyboard.py`
-and `bindings.json` supply the reference; `hud_logs.py` supplies both log streams and `hud_monitor.py` supplies
-all five native VTE log/monitor terminals. `hud-workspace` prepares the layout and
-launches the fixed applications. These files live under
-`/usr/local/libexec/qubes-hud/`, with three launchers under
-`/usr/share/applications/qubes-hud-*.desktop`. All are root-owned,
-with marker/inode/owner/mode collision checks and corresponding rollback.
-It uses only the existing Python standard library and stock GTK3/GLib/X11,
-VTE and Pango shared libraries through ctypes. No packages or custom compiled
-binaries are added. This is project-maintained dom0 source code, not an official Qubes app.
+`hud-bindings`, `bindings_keyboard.py` and `bindings.json` supply the reference.
+`hud-workspace` prepares the native i3 layout and launches the fixed applications.
+They use the existing Python interpreter, its standard library and stock
+GTK3/GLib/X11 libraries through ctypes. The five read-only terminals use
+native programs and configuration instead of Python. No Python modules or
+custom compiled binaries are added. The remaining helpers are maintained by
+this project, not official Qubes applications.
 
 Salt validates Python syntax and staged JSON, then runs `hud-bindings --check`
-without opening a display or reading logs to verify the data, required library
-symbols and existing log/monitor executables. `hud-workspace --check` validates
-its embedded layout and stock launch commands without opening a display.
-Startup and the launchers depend on this check succeeding. Salt does not
-reload the running i3 configuration or move existing windows. New assignment
-and login behavior apply at the next HUD login/reboot.
+without opening a display to verify the reference data and required symbols.
+`hud-workspace --check` validates its layout and stock launch commands.
+Separate native checks verify Xterm, rsyslog configurations and required
+executables without reading logs or opening windows. Files are root-owned,
+with marker/inode/owner/mode collision checks and corresponding rollback.
+Startup depends on these checks succeeding. Salt does not reload i3 or move
+existing windows; startup placement takes effect at the next HUD login/reboot.
 
 ## Live dom0 and Xen logs
 
 **HUD Dom0 Logs** and **HUD Xen Logs** are normal framed, focusable dom0
-read-only terminals using the same cyan palette and font as the three system
-monitors. Open either from the application
-launcher or use the shared command with `--view dom0` or `--view xen`.
-Closing a pane closes its readers; reopening starts with a small recent tail.
+read-only Xterm windows. Open them through the application launcher or run
+`gtk-launch qubes-hud-dom0-logs` / `gtk-launch qubes-hud-xen-logs`.
+Each runs an independent unprivileged foreground rsyslog process. The system
+rsyslog service and configuration remain untouched.
 
-The dom0 pane combines the current boot's accessible system and user journal
-with dom0's `guid.*.log`, `qrexec.*.log` and `qubesdb.*.log` files, plus the Xen
-hotplug and domain-builder toolstack logs when present. Journal records include
-dom0 kernel/services, qubesd and other Qubes host activity. Every displayed
-line has a source prefix; independent sources are interleaved as read, not
-retrospectively sorted into one exact timeline.
+The dom0 pane combines new accessible local system/user journal records with
+`/var/log/qubes/guid.*.log`, `qrexec.*.log` and `qubesdb.*.log`, plus Xen's
+`xen-hotplug.log` and `domain-builder-ng.log` when present. Journal records
+include dom0 kernel/services, qubesd and other Qubes host activity. Each record
+has a timestamp and source prefix. Sources interleave as received rather than
+being retrospectively sorted into one exact timeline.
 
 The Xen pane follows `/var/log/xen/console/hypervisor.log`, the hypervisor
 console already recorded by stock xenconsoled. It is the single below-dom0
 stream on the development machine. `xl dmesg` reads the same console source
-and is not separately added or cleared. A quiet Xen pane is normal when no
-hypervisor events occur.
+and is not separately added or cleared. A quiet or initially empty Xen pane
+is normal when no hypervisor events occur.
 
-Neither pane connects to a guest or reads `guest-*.log`, guest journals,
-update output or management-VM execution logs. Readers run as the desktop
-user using existing permissions: no sudo, root GUI, ACL or group changes.
-Protected libvirt detail files remain unread; their unavailability is shown
-and accessible service-journal messages are still included. Other missing or
-inaccessible sources and a stopped journal process are also reported. Journalctl exposes only records permitted to the current user; tighter
-permissions can reduce coverage. The reader never changes those permissions.
+Neither pane connects to a guest or selects `guest-*.log`, guest journals,
+update output or management-VM execution logs. Readers use the desktop user's
+existing permissions: no sudo, root GUI, ACL or group changes. Protected
+libvirt detail files remain unread; accessible service-journal messages are
+still included. Rsyslog supplies native diagnostics instead of a custom
+source-count/omissions footer. Tighter permissions can reduce coverage.
 
-Each pane keeps 600 terminal scrollback rows plus the visible screen; older
-text expires. Scroll up to read recent history; scroll to the bottom to
-follow again. Lines wrap to the pane width. Select text and press
-**Ctrl+Shift+C** to copy, including across wrapped lines. Input, paste and
-text drops are disabled. Logs cannot issue terminal commands: their control
-and bidi characters are visibly escaped before entering VTE, including OSC
-clipboard/title sequences. Only the viewer supplies CR/LF line breaks.
-Long lines and per-update work are capped. File readers handle truncation,
-replacement and newly created matching files, with at most 256 files and
-4096 directory entries scanned. Reaching a source limit is visible in the
-footer. No log copy is written to disk and no full archive is loaded.
+A fresh pane follows new records without loading a recent tail. File readers
+handle truncation, replacement and new matching files. On graceful close,
+rsyslog saves small file-offset records in private per-view directories under
+`/run/user/UID/qubes-hud-terminals/`. Reopening during the same login resumes
+those offsets, including records written while closed. Journal following
+starts fresh each time. Offsets disappear with the login runtime; no copied
+log archive is written. Each terminal retains 600 scrollback rows plus its
+visible screen. Scroll up with the wheel or **Shift+PageUp**; scroll to the
+bottom to follow again. Lines wrap to the window width.
+
+The native configuration escapes control and all non-ASCII bytes visibly,
+including Unicode text, malformed bytes and terminal escape sequences.
+Unlike the former Python reader, native imfile follows matching symlinks.
+Current selected host files and their parents were checked and contain no
+symlinks; a future matching symlink created in these dom0 log directories
+would be followed. This is a deliberate tradeoff for removing the custom
+reader. Records are limited to 2 KiB, the process has a 512-descriptor limit,
+and delivery uses a direct queue. Larger source sets can exceed that limit;
+the old custom file-count and per-poll limits no longer apply.
 
 ## Manager and terminal block
 
@@ -206,21 +210,28 @@ show Xen domain usage and dom0 cgroup usage respectively. Cgroup metrics depend
 on accounting already enabled by the system; the HUD does not enable any.
 All commands run with the desktop user's existing permissions.
 
-All five read-only panes share the stock VTE terminal widget and copying/input
-policy. The three monitors spawn their fixed commands with input already
-disabled; the log panes receive sanitized text from their existing readers
-and have no PTY command. Typing, terminal paste and text drops
-are disabled; selection, scrolling, focus and Ctrl+Shift+C copying remain.
-Hyperlinks, sixel graphics and audible bells are disabled. The palette uses
-cyan shades; monitors retain 200 scrollback rows and logs retain 600. There is no shell behind a
-monitor and no shell fallback after it exits. Normal close terminates and
-reaps its child. The first terminal and Qubes Manager remain interactive.
+All five read-only panes share stock Xterm configuration and one Salt-rendered
+desktop-entry template. Mouse selection, **Ctrl+Shift+C** or **Ctrl+Insert**
+copying, scrolling and focus remain available. Key input, paste and terminal
+mouse reporting are disabled through Xterm translations; terminal output
+cannot change the clipboard, title, font, colors or window geometry. There
+is no shell fallback when a monitor exits. The first terminal and Qubes
+Manager remain interactive.
 
-Each terminal uses Noto Sans Mono 8 locally, leaving other terminal windows'
-settings intact. On a 1920px display the top panes show about 30 columns at
-once. The monitors keep a wider terminal canvas so native tables remain
-intact; the horizontal scrollbar reveals the remaining columns. Super+F
-expands the focused pane; Super+F again returns to the layout.
+Each terminal uses Noto Sans Mono 8, cyan on black, and 600 scrollback rows.
+Settings are scoped with `XENVIRONMENT`, leaving other terminal profiles
+alone. On a 1920px display the narrow top panes show about 25 columns. Native
+tables can wrap or be clipped; there is no additional horizontal canvas.
+**Super+F** expands the focused pane for full tables; press it again to return.
+
+Native `flock` keeps one terminal per user/view. A duplicate launch exits
+quietly; it does not focus the existing window. Normal close stops the child
+through stock `setpriv --pdeathsig TERM`. Log launchers additionally use
+`setsid --fork --wait` so rsyslog's HUP/reload handling cannot leave the
+terminal waiting for its logger. No new runtime wrapper script is involved.
+Native user-tmpfiles creates private runtime directories and lock files at
+login; Salt also prepares them for an already logged-in user. It neither
+starts a user session nor deletes active locks on rollback.
 
 `hud-workspace` embeds the layout and uses public i3 IPC, then exits. It launches
 the official Manager with Qt's `-name qubes-hud-manager` instance argument;
@@ -239,10 +250,12 @@ workspace 2 using the same installed source:
 /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-workspace --workspace 2
 ```
 
-Individual monitor panes can be reopened with the shared `hud-bindings` command
-and `--view top`, `--view xentop` or `--view cgtop`. A repeated manual launch
-focuses the existing pane. General HUD rollback removes the new owned sources
-and startup hook without closing applications or restarting the live desktop.
+Individual monitors can be reopened from the application launcher or with
+`gtk-launch qubes-hud-top`, `gtk-launch qubes-hud-xentop` and
+`gtk-launch qubes-hud-cgtop`. General HUD rollback removes owned launch/config
+files and the startup hook without closing applications or restarting the
+live desktop. Old managed `hud_logs.py` and `hud_monitor.py` files are removed
+on upgrade only after their native replacements validate.
 
 ## Supported platform and official packages
 
@@ -258,6 +271,15 @@ The HUD ships no compiled window manager and has no custom i3 build/version
 pin. It validates the candidate config with `/usr/bin/i3 -C` before replacing
 the user config. The settings package guard remains because the committed
 configuration and autostart helper derive from that exact Qubes integration.
+
+Xterm and rsyslog are supplied by the supported Qubes 4.3 desktop: the signed
+`qubes-release` package's `qubes-comps.xml` includes Xterm in `base-x` and
+rsyslog in `standard`, both selected by the Qubes Xfce environment. The other
+launch utilities come from stock util-linux, systemd and GTK. These are new
+baseline program requirements, with no additions to the formula's package
+list. A stripped installation missing them fails runtime validation instead
+of fetching arbitrary replacements. Package transport remains Qubes' native
+UpdateVM-backed provider; normal dom0 deployment has no direct network calls.
 
 For existing HUD installations, the legacy `/usr/local/libexec/qubes-hud/i3`
 path becomes a small managed shell launcher that runs `/usr/bin/i3` with all
@@ -279,13 +301,14 @@ The state expects these sources under `qubes_gui/hud/files/`:
 - `glow_pixels.py`
 - `hud-bindings`
 - `bindings_keyboard.py`
-- `hud_logs.py`
-- `hud_monitor.py`
+- `hud-terminal.Xresources`
+- `hud-terminal-tmpfiles.conf`
+- `hud-dom0-logs.conf`
+- `hud-xen-logs.conf`
 - `hud-workspace`
 - `bindings.json`
 - `qubes-hud-bindings.desktop`
-- `qubes-hud-dom0-logs.desktop`
-- `qubes-hud-xen-logs.desktop`
+- `qubes-hud-terminal.desktop` (shared template for five launchers)
 - `picom.conf`
 - `window-glass.glsl`
 - `qubes-hud.desktop`
@@ -312,7 +335,8 @@ hardcodes a country or language.
 
 `hud-xdg-autostart` starts `/usr/bin/picom` synchronously with
 `/usr/local/libexec/qubes-hud/picom.conf`, starts `hud-glow` in the background
-once Picom succeeds, runs `hud-workspace` to prepare workspace 1 and launch
+once Picom succeeds, prepares native terminal runtime files, runs
+`hud-workspace` to prepare workspace 1 and launch
 its fixed applications, then runs the normal
 Qubes system and user XDG autostart entries while filtering any bare
 `picom.desktop` entry. This

@@ -41,9 +41,7 @@ def load_module(name, path):
 
 def load_application():
     keyboard = load_module('test_bindings_keyboard', FILES / 'bindings_keyboard.py')
-    logs = load_module('test_hud_logs_backend', FILES / 'hud_logs.py')
-    monitor = load_module('test_hud_monitor_backend', FILES / 'hud_monitor.py')
-    with mock.patch.dict('sys.modules', {'bindings_keyboard': keyboard, 'hud_logs': logs, 'hud_monitor': monitor}), \
+    with mock.patch.dict('sys.modules', {'bindings_keyboard': keyboard}), \
             mock.patch.object(ctypes, 'CDLL', side_effect=lambda *_: SymbolLibrary()):
         return load_module('test_hud_bindings', FILES / 'hud-bindings')
 
@@ -72,9 +70,7 @@ class RuntimeChecks(unittest.TestCase):
 
     def test_missing_gtk_symbol_is_rejected_during_runtime_binding(self):
         keyboard = load_module('test_bindings_keyboard_missing', FILES / 'bindings_keyboard.py')
-        logs = load_module('test_hud_logs_backend_missing', FILES / 'hud_logs.py')
-        monitor = load_module('test_hud_monitor_backend_missing', FILES / 'hud_monitor.py')
-        with mock.patch.dict('sys.modules', {'bindings_keyboard': keyboard, 'hud_logs': logs, 'hud_monitor': monitor}), \
+        with mock.patch.dict('sys.modules', {'bindings_keyboard': keyboard}), \
                 mock.patch.object(ctypes, 'CDLL', return_value=SymbolLibrary('gtk_main')):
             with self.assertRaises(AttributeError):
                 load_module('test_missing_gtk_app', FILES / 'hud-bindings')
@@ -187,17 +183,6 @@ class SingletonChecks(unittest.TestCase):
         with mock.patch.dict(os.environ, {'DISPLAY': ':92'}):
             self.assertIsNotNone(self.acquire())
 
-    def test_each_view_has_its_own_lock_and_duplicate_focus_target(self):
-        self.acquire()
-        for view, klass in (("dom0", "QubesHudDom0Logs"), ("xen", "QubesHudXenLogs")):
-            descriptor = self.app.acquire_instance(True, view)
-            self.assertIsNotNone(descriptor)
-            self.descriptors.append(descriptor)
-            tree = {"nodes": [{"id": 71, "window_properties": {"class": klass}}]}
-            with mock.patch.object(self.app.subprocess, "check_output", return_value=json.dumps(tree).encode()), \
-                    mock.patch.object(self.app.subprocess, "run") as command:
-                self.assertIsNone(self.app.acquire_instance(False, view))
-            self.assertEqual(command.call_args.args[0], ["/usr/bin/i3-msg", "[con_id=71] focus"])
 
     def test_unsafe_runtime_and_remote_display_are_rejected(self):
         self.runtime.chmod(0o755)

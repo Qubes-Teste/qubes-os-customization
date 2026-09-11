@@ -173,14 +173,21 @@ the right show **HUD Dom0 Logs** and **HUD Xen Logs** in read-only terminals.
 They combine local host-service streams and the hypervisor console respectively, without
 reading guest logs. Each retains 600 scrollback rows plus its visible screen
 and pauses following while you scroll back. All five read-only terminals
-support text selection and **Ctrl+Shift+C** copying. Bindings and both log panes
-can also be reopened from the HUD app launcher.
+support text selection and **Ctrl+Shift+C** copying. All panes can be reopened
+from the HUD app launcher. Use **Super+F** to read wide monitor tables.
 
-The reference, logs and read-only monitors share readable Python source using
-dom0's existing standard library and stock GTK3/GLib/X11/VTE libraries. It adds
-no package, Python module or compiled binary. Salt installs and validates the
-scripts/data, supplies the launcher and startup rules, and removes owned files
-on rollback. Applying Salt does not move current windows or reload i3;
+The five read-only panes use stock Xterm and native monitor programs; stock
+rsyslog combines the logs. Salt supplies shared terminal settings, desktop
+launchers and two small logger configurations, with no custom Python terminal
+or log reader. These programs are supplied by the supported Qubes desktop;
+no packages or custom binaries are added. Logs initially follow new records,
+so the Xen pane can remain empty until an event occurs. Non-ASCII log bytes
+are visibly escaped; see the [log-reader details](salt/qubes_gui/hud/README.md#live-dom0-and-xen-logs).
+
+The keyboard-aware Bindings reference and guarded workspace startup still
+use small Python helpers with the existing system interpreter and libraries.
+Salt installs and validates the assets and removes owned files on rollback.
+Applying Salt does not move current windows or reload i3;
 the startup placement takes effect at
 the next HUD login.
 

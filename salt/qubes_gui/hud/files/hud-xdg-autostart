@@ -110,6 +110,12 @@ else
         'Qubes HUD: Picom failed to start; continuing desktop autostart.' >&2
 fi
 
+# Native terminal locks and rsyslog cursors live only in this user's runtime.
+if ! /usr/bin/systemd-tmpfiles --user --create \
+    /usr/lib/user-tmpfiles.d/qubes-hud-terminals.conf; then
+    printf '%s\n' 'Qubes HUD: could not prepare native terminal runtime.' >&2
+fi
+
 # Prepare the native i3 layout before normal desktop autostart can add windows.
 # Repeated startup preserves an existing layout and the user's current focus.
 if ! /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-workspace; then

@@ -10,7 +10,7 @@ documentation remains authoritative for individual states and commands:
 - `salt/qubes_gui/guest_hud/README.md`
 
 Always verify the current worktree and history. The prior published baseline is
-`3e0bd29` (`Add Manager and read-only monitors to the dom0 workspace`),
+`a049bff` (`Use shared read-only terminals for dom0 and Xen logs`),
 which includes the accepted official i3/glow changes, HUD Bindings, host logs,
 Manager and the terminal layout, and these project instructions. The latest integration and validation are recorded at
 the end of this document.
@@ -79,6 +79,11 @@ machine:
 11. The same day, shared dom0/Xen log panes were added, followed by a central
     block with four terminal panes above Qubes Manager. The complete layout
     starts on workspace 1 at future HUD logins; live previews use workspace 2.
+12. The user then requested minimizing additional non-Salt code. The five
+    Python log/monitor terminals were replaced with stock Xterm and native
+    programs configured by Salt; rsyslog replaces the custom log reader.
+    Earlier VTE/reader sections below are historical, superseded by the final
+    native-terminal section.
 
 ## Repository and deployment architecture
 
@@ -1392,3 +1397,175 @@ Deployment and live activation completed:
   activation/test scripts and private log content are not deployment assets
   and are not committed. Future workspace-1 startup uses the new terminals
   through the same existing Salt-managed helpers and launchers.
+
+
+## Stock terminals and log followers (2026-09-11)
+
+The user approved trying native programs instead of the custom Python
+terminal/log implementation, and set the general rule that less additional
+non-Salt code is better. This preference is now explicit in `AGENTS.md`.
+This section supersedes the previous GTK/VTE terminal and custom log-reader
+behavior. Bindings, the interactive Xfce terminal, official Manager, existing
+i3 layout and glow remain. Future login startup still targets workspace 1;
+live evaluation remains on workspace 2 without moving workspace 1.
+
+### Implementation and baseline dependencies
+
+The five read-only windows use stock Xterm. One shared Jinja desktop template
+renders their class/instance/title and fixed native command. A scoped
+`XENVIRONMENT` file supplies cyan text, black background, Noto Sans Mono 8,
+600 scrollback rows and replacement input translations. Selection and
+Ctrl+Shift+C / Ctrl+Insert copying work; key input, paste, mouse reporting and
+terminal menu actions do not reach the child. Window/title/font/color/termcap
+operations are denied, including OSC52 clipboard reads/writes. The ordinary
+first terminal remains interactive. These are interface restrictions, not a
+sandbox against the desktop user changing their own configuration.
+
+Monitors directly run the existing top/xentop/systemd-cgtop commands through
+stock `setpriv --pdeathsig TERM`. Each log pane instead runs its own
+unprivileged foreground rsyslog with a small committed native configuration.
+No system rsyslog service or global logging configuration is enabled/changed.
+Rsyslog treats HUP as reload, so its launcher uses stock
+`setsid --fork --wait` before setpriv: closing Xterm stops the waiting parent,
+which sends TERM through the parent-death mechanism and lets rsyslog save
+its cursors and exit. Direct setpriv alone was rejected because Xterm could
+wait indefinitely for rsyslog after HUP.
+
+Native flock provides one terminal per user/view. A duplicate launch exits
+quietly rather than focusing an existing pane. User-tmpfiles supplies 0700
+runtime/state directories and five 0600 lock files under
+`/run/user/UID/qubes-hud-terminals`. Salt prepares them only if the user's
+runtime exists; the HUD login hook also runs the native tmpfiles command.
+Repeated creation preserves lock inodes. Rollback removes persistent owned
+assets but leaves live processes and their runtime metadata alone.
+
+No package was installed or added to the Salt package ceiling. The signed
+Qubes 4.3 `qubes-release` package's `/usr/share/qubes/qubes-comps.xml` selects
+Xterm through base-x and rsyslog through standard, both included by the Qubes
+Xfce environment. Installed libcomps parses Xterm's untyped packagereq as
+mandatory, including for base-x with nodefaults. Stock util-linux supplies
+flock/setpriv/setsid, GTK supplies gtk-launch, and systemd supplies tmpfiles.
+These baseline program requirements are now checked before enabling launchers;
+a stripped installation missing them fails validation. Tested native versions
+are Xterm 397 and rsyslog 8.2312.0 on Fedora 41 dom0. No source build, downloaded
+asset, language package or Python module is required on another machine.
+
+`hud_logs.py` (282 lines) and `hud_monitor.py` (237 lines) are retired. Their
+managed installed files are removed only after the native replacements and
+bindings-only frontend validate. `hud-bindings` no longer imports them or
+accepts non-bindings views. All five native panes have desktop launchers.
+The existing small `hud-workspace` helper still guards and assembles public
+i3 JSON/IPC, now matching native terminal class+instance and launching those
+desktop entries. Bindings and the glow remain custom Python where stock
+configuration does not provide the accepted behavior. No new terminal/log
+runtime script replaces the removed modules.
+
+### Log coverage and changed behavior
+
+Dom0 rsyslog combines accessible local journals and the same guid/qrexec/
+qubesdb files, xen-hotplug and optional domain-builder log. Exact output path
+filters retain the selected host services. Xen follows only hypervisor.log;
+it does not separately invoke or clear xl dmesg. No guest command is run and
+no guest console/journal is selected. All readers run as uid1000 here, with
+no sudo, permission or group changes. Native rsyslog diagnostics replace the
+custom source/omissions footer; protected libvirt detail logs remain unread.
+
+A fresh reader begins with new records, without the former recent tail.
+Journal following starts fresh on each launch. Native file offsets saved on
+graceful close persist within the login runtime, so reopening resumes records
+written since closing; logout/reboot removes the offsets. No copied log
+archive is stored. Quiet Xen output can therefore be empty at startup.
+Native imfile handles append, new-file first records, copytruncate and
+rename/recreate. Records/lines are limited to 2 KiB, process descriptors to
+512, and the message queue is direct; the former Python source-count and
+per-poll limits no longer apply. Full source sets may exceed the native FD
+limit (current dom0 reader used 333 FDs, roughly two per selected file).
+
+Control and all non-ASCII bytes display as visible escapes, including German
+text, malformed encodings, bidi characters and terminal sequences. Native
+imfile follows matching symlinks, unlike the former O_NOFOLLOW reader. The
+current 155 selected Qubes daemon files, xen-hotplug, hypervisor log and their
+parents were verified regular/readable with no symlinks; domain-builder is
+absent. A future dom0-created matching symlink can change the opened target.
+These tradeoffs were presented as an optional preference question; proceeding
+with stock programs follows the user's explicit preference for less custom
+code. Do not claim preservation of the old Unicode/no-follow guarantees.
+
+Rsyslog's backtick `echo $HUD_LOG_STATE` notation is its built-in environment
+expansion, not a shell command. The exact 8.2312 source implementation calls
+getenv and accepts only that syntax. An isolated test with literal shell
+metacharacters confirmed no execution; arbitrary backtick commands fail.
+The scoped state directories hold only file-offset metadata.
+
+Native Xterm follows the actual pane width. At the current 1920px layout,
+205px top panes show about 25 columns: tables can wrap or be clipped. The
+former wide VTE canvas/horizontal scrollbar is removed. Super+F expands a
+pane for usable full tables. Wheel and Shift+PageUp/PageDown scroll recent
+history; scrolling back pauses following until the bottom is reached.
+
+### Validation
+
+Before live activation, isolated tests verified the final native resource
+file, zero input/paste/mouse-reporting bytes, selection/copy, OSC52 denial,
+unchanged clipboard/title/geometry and normal native child cleanup. Rsyslog
+fixtures checked file lifecycle, exact output filters, long-line bounds,
+raw-message preservation and environment expansion. Production configurations
+were run unprivileged with stdout/stderr discarded; descriptor inspection
+found only selected host sources and accessible journals, with no guest log
+FDs. Their shutdowns completed normally, including saving 156 dom0 file
+cursors. No actual log contents or live clipboard contents are committed.
+
+Salt fixtures passed 249 safety/ordering cases; installed native renders
+contained 60 apply and 50 rollback states. Native package install, refresh
+and removal providers resolve to qubes_dom0_update. Generated desktop files
+were accepted by installed GDesktopAppInfo, configurations by rsyslog -N1,
+and runtime files by native user-tmpfiles. The custom-code regression suite
+now contains 32 tests, including exact native terminal class/instance matching.
+
+Evidence is under `/tmp/qubes-hud-xterm-test/`,
+`/tmp/qubes-hud-rsyslog-candidate-rbyjkcb1/`,
+`/tmp/qubes-hud-rsyslog-env-proof-s6cj9h47/`,
+`/tmp/qubes-hud-native-production-smoke-o5w2usig/`, and
+`/tmp/hud-native-terminals-{salt-fixtures,installed-salt-render,native-validation}.json`.
+The final private official-i3 startup test placed all eight real clients,
+preserved workspace 1/focus, and verified repeated layout/desktop launches as
+no-ops with five held flock locks. Selection/copy and child cleanup passed
+with the exact final resources. A separate private migration replaced all five
+old Python panes while preserving eight outer frames, the other three clients
+and focus. Native Xterm interiors are 2px smaller in each dimension due to
+native border accounting; this does not change the layout's frame geometry.
+Evidence: `/tmp/qubes-hud-native-workspace-test/results.json` and
+`/tmp/qubes-hud-native-terminals-test/replacement-results.json`.
+
+Live deployment synced the committed-source assets through the existing local
+Salt workflow. Default dry-run and apply passed all 60 states; rollback dry-run
+passed 50 states. No package changes occurred. Installed source bytes, root
+ownership/modes and removal of the two retired modules were verified.
+The first repeat apply found that Jinja blank lines inside the runtime guard's
+folded YAML string produced shell syntax errors before `&&`, unnecessarily
+rerunning native tmpfiles. Its harmless repeat setup preserved runtime inodes;
+the guard was corrected to a single joined native-test expression.
+
+The reviewed temporary migration runner then replaced only the five old
+Python read-only panes on live workspace 2. All eight outer rectangles and
+the three retained clients' identities/interiors are unchanged. The complete
+workspace 1 signature and prior Code-window focus were restored. Current
+native Xterm PIDs are top832690, xentop832720, cgtop832764, dom0832789 and
+xen832815. Their children are stock top/xentop/cgtop or setsid/rsyslogd, all
+uid1000. Native launcher diagnostics are empty; all replaced Python processes
+and their former monitor/journal children stopped. No i3, compositor, display
+manager, screen lock or qube was restarted. Startup remains workspace 1 at
+future HUD logins. Live evidence is under
+`/tmp/qubes-hud-native-terminals-deploy/`; captures contain process/layout
+metadata, not terminal contents.
+
+
+After the runtime guard correction, the final default apply passed all 60
+states with **zero changes** while the five native panes remained active.
+All five native locks remained held. Final default state renders and the
+50-state rollback dry-run passed, with no rollback executed. The deployment
+entrypoint audit covered 62 files, including extensionless helpers, and found
+no new direct-network path, build, binary, package or language dependency.
+The unchanged explicit maintainer direct-dom0 override remains opt-in.
+The 32 custom-code tests and final whitespace checks passed. No further desktop
+restart is required to evaluate these panes on workspace 2.

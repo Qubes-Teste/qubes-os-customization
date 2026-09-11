@@ -1,0 +1,12 @@
+# Qubes HUD managed file. Owner: salt/qubes_gui/hud.
+[Desktop Entry]
+Type=Application
+Name={{ title }}
+Comment=Read-only system stream; select text and press Ctrl+Shift+C to copy
+Exec=/usr/bin/env HUD_LOG_STATE=/run/user/{{ desktop_uid }}/qubes-hud-terminals/{{ view }} XENVIRONMENT=/usr/local/libexec/qubes-hud/hud-terminal.Xresources /usr/bin/flock --nonblock --conflict-exit-code 0 --close /run/user/{{ desktop_uid }}/qubes-hud-terminals/{{ view }}.lock /usr/bin/xterm -class {{ wmclass }} -name qubes-hud-{{ view }} -T "{{ title }}" -sl 600 -e {% if view in ('dom0', 'xen') %}/usr/bin/setsid --fork --wait {% endif %}/usr/bin/setpriv --pdeathsig TERM {{ command }}
+Icon=utilities-terminal
+Terminal=false
+StartupNotify=false
+StartupWMClass={{ wmclass }}
+Categories=System;Monitor;
+OnlyShowIn=i3;I3;

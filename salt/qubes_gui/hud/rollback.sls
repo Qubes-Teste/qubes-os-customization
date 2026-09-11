@@ -73,6 +73,15 @@
 {% set bindings_desktop = '/usr/share/applications/qubes-hud-bindings.desktop' %}
 {% set dom0_logs_desktop = '/usr/share/applications/qubes-hud-dom0-logs.desktop' %}
 {% set xen_logs_desktop = '/usr/share/applications/qubes-hud-xen-logs.desktop' %}
+{% set terminal_resources = '/usr/local/libexec/qubes-hud/hud-terminal.Xresources' %}
+{% set dom0_logs_config = '/usr/local/libexec/qubes-hud/hud-dom0-logs.conf' %}
+{% set xen_logs_config = '/usr/local/libexec/qubes-hud/hud-xen-logs.conf' %}
+{% set terminal_tmpfiles = '/usr/lib/user-tmpfiles.d/qubes-hud-terminals.conf' %}
+{% set terminal_text_targets = [terminal_resources, dom0_logs_config,
+    xen_logs_config, terminal_tmpfiles] %}
+{% for desktop in ['dom0-logs', 'xen-logs', 'top', 'xentop', 'cgtop'] %}
+  {% set _ = terminal_text_targets.append('/usr/share/applications/qubes-hud-' ~ desktop ~ '.desktop') %}
+{% endfor %}
 {% set picom_config = '/usr/local/libexec/qubes-hud/picom.conf' %}
 {% set window_shader = '/usr/local/libexec/qubes-hud/window-glass.glsl' %}
 {% set legacy_picom_config = '/etc/xdg/picom.conf' %}
@@ -290,6 +299,9 @@
     (tray_mode_record, [hud_asset_marker]),
     (hud_wallpaper_owner, [owner_marker])
 ] %}
+{% for path in terminal_text_targets %}
+  {% set _ = text_targets.append((path, [hud_asset_marker])) %}
+{% endfor %}
 {# Pre-icon-test installs have no record, so preserve pre-existing GTK settings. #}
 {% if icon_settings_owner_owned %}
   {% set text_targets = text_targets + [
@@ -300,6 +312,8 @@
 {% endif %}
 {% set directory_targets = [
     '/usr',
+    '/usr/lib',
+    '/usr/lib/user-tmpfiles.d',
     '/usr/share',
     '/usr/share/icons',
     '/usr/share/applications',
@@ -382,6 +396,16 @@
   {% if target_lstat|length > 0 and (
       target_lstat.get('st_uid') != 0 or target_lstat.get('st_gid') != 0
       or salt['file.get_mode'](path) != expected_mode) %}
+    {% set collision.found = true %}
+  {% endif %}
+{% endfor %}
+
+{% for path in terminal_text_targets + [logs_module, monitor_module] %}
+  {% set target_lstat = salt['file.lstat'](path) %}
+  {% if target_lstat|length > 0 and (
+      target_lstat.get('st_uid') != 0 or target_lstat.get('st_gid') != 0
+      or target_lstat.get('st_nlink') != 1
+      or salt['file.get_mode'](path) != '0644') %}
     {% set collision.found = true %}
   {% endif %}
 {% endfor %}
@@ -724,6 +748,33 @@ qubes_gui_hud_rollback_remove_xen_logs_desktop:
     - name: {{ xen_logs_desktop }}
     - require:
       - file: qubes_gui_hud_rollback_remove_autostart_helper
+
+{% for view in ['top', 'xentop', 'cgtop'] %}
+qubes_gui_hud_rollback_remove_{{ view }}_desktop:
+  file.absent:
+    - name: /usr/share/applications/qubes-hud-{{ view }}.desktop
+    - require:
+      - file: qubes_gui_hud_rollback_remove_autostart_helper
+      - file: qubes_gui_hud_rollback_remove_workspace_helper
+{% endfor %}
+
+{# Active terminals own their runtime data until exit/logout. Removing only
+   managed launch/config files leaves current desktop processes undisturbed. #}
+{% for asset, path in [('terminal_resources', terminal_resources),
+    ('dom0_logs_config', dom0_logs_config), ('xen_logs_config', xen_logs_config),
+    ('terminal_tmpfiles', terminal_tmpfiles)] %}
+qubes_gui_hud_rollback_remove_{{ asset }}:
+  file.absent:
+    - name: {{ path }}
+    - require:
+      - file: qubes_gui_hud_rollback_remove_autostart_helper
+      - file: qubes_gui_hud_rollback_remove_workspace_helper
+      - file: qubes_gui_hud_rollback_remove_dom0_logs_desktop
+      - file: qubes_gui_hud_rollback_remove_xen_logs_desktop
+{% for view in ['top', 'xentop', 'cgtop'] %}
+      - file: qubes_gui_hud_rollback_remove_{{ view }}_desktop
+{% endfor %}
+{% endfor %}
 
 qubes_gui_hud_rollback_remove_bindings_helper:
   file.absent:

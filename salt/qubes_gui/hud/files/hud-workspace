@@ -33,15 +33,18 @@ def identify(node):
             if properties.get('instance') == 'qubes-hud-manager':
                 return view  # The official Manager's class is translated.
         elif (properties.get('class') == wmclass
-              and properties.get('window_role') == 'qubes-hud-' + view):
+              and (properties.get('window_role') == 'qubes-hud-' + view
+                   or properties.get('instance') == 'qubes-hud-' + view)):
             return view
     return None
 
 
 def commands():
-    result = {view: ['/usr/bin/python3', '-B', str(HERE / 'hud-bindings'),
-                     '--view', view, '--background']
-              for view in CLASSES if view not in ('terminal', 'manager')}
+    result = {'bindings': ['/usr/bin/python3', '-B', str(HERE / 'hud-bindings'),
+                           '--background']}
+    for view in ('dom0', 'xen', 'top', 'xentop', 'cgtop'):
+        name = view + '-logs' if view in ('dom0', 'xen') else view
+        result[view] = ['/usr/bin/gtk-launch', 'qubes-hud-' + name]
     result['terminal'] = ['/usr/bin/xfce4-terminal', '--disable-server',
         '--class=QubesHudTerminal', '--role=qubes-hud-terminal', '--title=Terminal',
         '--dynamic-title-mode=none', '--hide-menubar', '--hide-toolbar',
@@ -55,7 +58,8 @@ def layout():
         match = {'class': '^' + CLASSES[view] + '$', 'window_type': 'normal'}
         if view == 'manager':
             del match['class']
-        match['instance' if view == 'manager' else 'window_role'] = '^qubes-hud-' + view + '$'
+        key = 'window_role' if view in ('bindings', 'terminal') else 'instance'
+        match[key] = '^qubes-hud-' + view + '$'
         return {'type': 'con', 'name': view, 'percent': percent,
                 'marks': [MARK + '-' + view], 'swallows': [match]}
     return {'type': 'con', 'layout': 'splith', 'marks': [MARK], 'nodes': [

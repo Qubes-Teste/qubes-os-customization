@@ -62,6 +62,15 @@ class LayoutChecks(unittest.TestCase):
         self.assertNotIn('class', manager_slot['swallows'][0])
         self.assertEqual(manager_slot['swallows'][0]['window_type'], 'normal')
 
+    def test_native_terminals_match_exact_class_and_instance_without_role(self):
+        for view in ('dom0', 'xen', 'top', 'xentop', 'cgtop'):
+            node = client(view)
+            properties = node['window_properties']
+            properties['instance'] = properties.pop('window_role')
+            self.assertEqual(app.identify(node), view)
+            properties['class'] = 'OtherApp'
+            self.assertIsNone(app.identify(node))
+
 
 class RefusalChecks(unittest.TestCase):
     def refuse(self, workspaces, expected):

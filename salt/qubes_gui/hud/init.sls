@@ -4,6 +4,7 @@
 {% set desktop_group = settings.get('desktop_group', desktop_user) %}
 {% set transport = settings.get('package_transport', 'qubes-updatevm') %}
 {% set user_info = salt['user.info'](desktop_user) %}
+{% set desktop_uid = user_info.get('uid', -1) if user_info else -1 %}
 {% set desktop_home = user_info.get('home', '/home/' ~ desktop_user) if user_info else '/home/' ~ desktop_user %}
 {% set owner_marker = 'Managed by qubes-os-customization Salt formula' %}
 {% set hud_asset_marker = 'Qubes HUD managed file. Owner: salt/qubes_gui/hud.' %}
@@ -79,6 +80,28 @@
 {% set bindings_desktop = '/usr/share/applications/qubes-hud-bindings.desktop' %}
 {% set dom0_logs_desktop = '/usr/share/applications/qubes-hud-dom0-logs.desktop' %}
 {% set xen_logs_desktop = '/usr/share/applications/qubes-hud-xen-logs.desktop' %}
+{% set terminal_resources = '/usr/local/libexec/qubes-hud/hud-terminal.Xresources' %}
+{% set dom0_logs_config = '/usr/local/libexec/qubes-hud/hud-dom0-logs.conf' %}
+{% set xen_logs_config = '/usr/local/libexec/qubes-hud/hud-xen-logs.conf' %}
+{% set terminal_tmpfiles = '/usr/lib/user-tmpfiles.d/qubes-hud-terminals.conf' %}
+{% set terminal_views = [
+    ('dom0', 'dom0-logs', 'HUD Dom0 Logs', 'QubesHudDom0Logs',
+     '/usr/sbin/rsyslogd -n -iNONE -f ' ~ dom0_logs_config),
+    ('xen', 'xen-logs', 'HUD Xen Logs', 'QubesHudXenLogs',
+     '/usr/sbin/rsyslogd -n -iNONE -f ' ~ xen_logs_config),
+    ('top', 'top', 'HUD top', 'QubesHudTop', '/usr/bin/top --secure-mode'),
+    ('xentop', 'xentop', 'HUD xentop', 'QubesHudXentop',
+     '/usr/sbin/xentop --delay=2 --full-name'),
+    ('cgtop', 'cgtop', 'HUD systemd-cgtop', 'QubesHudCgtop',
+     '/usr/bin/systemd-cgtop --delay=2 --depth=2')
+] %}
+{% set user_runtime = '/run/user/' ~ desktop_uid %}
+{% set terminal_runtime_root = user_runtime ~ '/qubes-hud-terminals' %}
+{% set terminal_text_targets = [terminal_resources, dom0_logs_config,
+    xen_logs_config, terminal_tmpfiles] %}
+{% for view, desktop, title, wmclass, command in terminal_views %}
+  {% set _ = terminal_text_targets.append('/usr/share/applications/qubes-hud-' ~ desktop ~ '.desktop') %}
+{% endfor %}
 {% set picom_config = '/usr/local/libexec/qubes-hud/picom.conf' %}
 {% set window_shader = '/usr/local/libexec/qubes-hud/window-glass.glsl' %}
 {% set legacy_picom_config = '/etc/xdg/picom.conf' %}
@@ -272,8 +295,13 @@
     (cyan_icon_owner, [hud_asset_marker]),
     (hud_wallpaper_owner, [owner_marker])
 ] %}
+{% for path in terminal_text_targets %}
+  {% set _ = text_targets.append((path, [hud_asset_marker])) %}
+{% endfor %}
 {% set directory_targets = [
     '/usr',
+    '/usr/lib',
+    '/usr/lib/user-tmpfiles.d',
     '/usr/share',
     '/usr/share/icons',
     '/usr/share/applications',
@@ -321,6 +349,40 @@
   {% if target_lstat|length > 0 and (
       target_lstat.get('st_uid') != 0 or target_lstat.get('st_gid') != 0
       or salt['file.get_mode'](path) != expected_mode) %}
+    {% set collision.found = true %}
+  {% endif %}
+{% endfor %}
+
+{% for path in terminal_text_targets + [logs_module, monitor_module] %}
+  {% set target_lstat = salt['file.lstat'](path) %}
+  {% if target_lstat|length > 0 and (
+      target_lstat.get('st_uid') != 0 or target_lstat.get('st_gid') != 0
+      or target_lstat.get('st_nlink') != 1
+      or salt['file.get_mode'](path) != '0644') %}
+    {% set collision.found = true %}
+  {% endif %}
+{% endfor %}
+
+{# The native tmpfiles command may only touch private, unlinked user-owned
+   runtime objects. Leave the directory absent when no login runtime exists. #}
+{% for path in [user_runtime, terminal_runtime_root,
+    terminal_runtime_root ~ '/dom0', terminal_runtime_root ~ '/xen'] %}
+  {% set target_lstat = salt['file.lstat'](path) %}
+  {% if target_lstat|length > 0 and (
+      not salt['file.directory_exists'](path) or salt['file.is_link'](path)
+      or target_lstat.get('st_uid') != desktop_uid
+      or salt['file.get_mode'](path) != '0700') %}
+    {% set collision.found = true %}
+  {% endif %}
+{% endfor %}
+{% for view, desktop, title, wmclass, command in terminal_views %}
+  {% set path = terminal_runtime_root ~ '/' ~ view ~ '.lock' %}
+  {% set target_lstat = salt['file.lstat'](path) %}
+  {% if target_lstat|length > 0 and (
+      not salt['file.file_exists'](path) or salt['file.is_link'](path)
+      or target_lstat.get('st_uid') != desktop_uid
+      or target_lstat.get('st_nlink') != 1
+      or salt['file.get_mode'](path) != '0600') %}
     {% set collision.found = true %}
   {% endif %}
 {% endfor %}
@@ -602,34 +664,6 @@ qubes_gui_hud_bindings_keyboard:
     - require:
       - file: qubes_gui_hud_binary_directory
 
-qubes_gui_hud_logs_module:
-  file.managed:
-    - name: {{ logs_module }}
-    - source: salt://qubes_gui/hud/files/hud_logs.py
-    - check_cmd: >-
-        /usr/bin/python3 -c 'import ast, sys;
-        ast.parse(open(sys.argv[1], encoding="utf-8").read(),
-        filename=sys.argv[1])'
-    - user: root
-    - group: root
-    - mode: '0644'
-    - require:
-      - file: qubes_gui_hud_binary_directory
-
-qubes_gui_hud_monitor_module:
-  file.managed:
-    - name: {{ monitor_module }}
-    - source: salt://qubes_gui/hud/files/hud_monitor.py
-    - check_cmd: >-
-        /usr/bin/python3 -c 'import ast, sys;
-        ast.parse(open(sys.argv[1], encoding="utf-8").read(),
-        filename=sys.argv[1])'
-    - user: root
-    - group: root
-    - mode: '0644'
-    - require:
-      - file: qubes_gui_hud_binary_directory
-
 qubes_gui_hud_bindings_helper:
   file.managed:
     - name: {{ bindings_helper }}
@@ -644,8 +678,6 @@ qubes_gui_hud_bindings_helper:
     - require:
       - file: qubes_gui_hud_binary_directory
       - file: qubes_gui_hud_bindings_keyboard
-      - file: qubes_gui_hud_logs_module
-      - file: qubes_gui_hud_monitor_module
 {% if transport == 'direct-dom0' %}
       - cmd: qubes_gui_hud_runtime_packages_direct
 {% else %}
@@ -663,8 +695,6 @@ qubes_gui_hud_bindings_data:
     - require:
       - file: qubes_gui_hud_binary_directory
       - file: qubes_gui_hud_bindings_helper
-      - file: qubes_gui_hud_logs_module
-      - file: qubes_gui_hud_monitor_module
 
 qubes_gui_hud_bindings_runtime:
   cmd.run:
@@ -672,8 +702,6 @@ qubes_gui_hud_bindings_runtime:
     - unless: /usr/bin/python3 -B {{ bindings_helper }} --check
     - require:
       - file: qubes_gui_hud_bindings_keyboard
-      - file: qubes_gui_hud_logs_module
-      - file: qubes_gui_hud_monitor_module
       - file: qubes_gui_hud_bindings_helper
       - file: qubes_gui_hud_bindings_data
 {% if transport == 'direct-dom0' %}
@@ -716,25 +744,114 @@ qubes_gui_hud_bindings_desktop:
     - require:
       - cmd: qubes_gui_hud_bindings_runtime
 
-qubes_gui_hud_dom0_logs_desktop:
+qubes_gui_hud_terminal_resources:
   file.managed:
-    - name: {{ dom0_logs_desktop }}
-    - source: salt://qubes_gui/hud/files/qubes-hud-dom0-logs.desktop
+    - name: {{ terminal_resources }}
+    - source: salt://qubes_gui/hud/files/hud-terminal.Xresources
     - user: root
     - group: root
     - mode: '0644'
     - require:
-      - cmd: qubes_gui_hud_bindings_runtime
+      - file: qubes_gui_hud_binary_directory
 
-qubes_gui_hud_xen_logs_desktop:
+{% for view, target in [('dom0', dom0_logs_config), ('xen', xen_logs_config)] %}
+qubes_gui_hud_{{ view }}_logs_config:
   file.managed:
-    - name: {{ xen_logs_desktop }}
-    - source: salt://qubes_gui/hud/files/qubes-hud-xen-logs.desktop
+    - name: {{ target }}
+    - source: salt://qubes_gui/hud/files/hud-{{ view }}-logs.conf
+    - check_cmd: /usr/bin/env HUD_LOG_STATE=/tmp /usr/sbin/rsyslogd -N1 -iNONE -f
     - user: root
     - group: root
     - mode: '0644'
     - require:
+      - file: qubes_gui_hud_binary_directory
+{% endfor %}
+
+qubes_gui_hud_terminal_tmpfiles:
+  file.managed:
+    - name: {{ terminal_tmpfiles }}
+    - source: salt://qubes_gui/hud/files/hud-terminal-tmpfiles.conf
+    - user: root
+    - group: root
+    - mode: '0644'
+    - makedirs: true
+
+{% set terminal_runtime_check =
+    '/usr/bin/xterm -version && '
+    ~ '/usr/bin/env HUD_LOG_STATE=/tmp /usr/sbin/rsyslogd -N1 -iNONE -f ' ~ dom0_logs_config ~ ' && '
+    ~ '/usr/bin/env HUD_LOG_STATE=/tmp /usr/sbin/rsyslogd -N1 -iNONE -f ' ~ xen_logs_config ~ ' && '
+    ~ '/usr/bin/test -x /usr/bin/setpriv && '
+    ~ '/usr/bin/test -x /usr/bin/setsid && '
+    ~ '/usr/bin/test -x /usr/bin/flock && '
+    ~ '/usr/bin/test -x /usr/bin/gtk-launch && '
+    ~ '/usr/bin/test -x /usr/bin/systemd-tmpfiles && '
+    ~ '/usr/bin/test -x /usr/bin/top && '
+    ~ '/usr/bin/test -x /usr/sbin/xentop && '
+    ~ '/usr/bin/test -x /usr/bin/systemd-cgtop' %}
+qubes_gui_hud_terminal_runtime:
+  cmd.run:
+    - name: {{ terminal_runtime_check }}
+    - unless: {{ terminal_runtime_check }}
+    - require:
+      - file: qubes_gui_hud_terminal_resources
+      - file: qubes_gui_hud_dom0_logs_config
+      - file: qubes_gui_hud_xen_logs_config
+      - file: qubes_gui_hud_terminal_tmpfiles
+
+{# A logged-in user's runtime tree is temporary. Native user-tmpfiles creates
+   it at login as well; Salt neither starts a session nor removes active state. #}
+{% set terminal_runtime_ready = [
+    '/usr/bin/test -d ' ~ terminal_runtime_root ~ '/dom0',
+    '/usr/bin/test -d ' ~ terminal_runtime_root ~ '/xen'
+] %}
+{% for view, desktop, title, wmclass, command in terminal_views %}
+  {% set _ = terminal_runtime_ready.append('/usr/bin/test -f '
+      ~ terminal_runtime_root ~ '/' ~ view ~ '.lock') %}
+{% endfor %}
+qubes_gui_hud_terminal_current_runtime:
+  cmd.run:
+    - name: /usr/bin/systemd-tmpfiles --user --create {{ terminal_tmpfiles }}
+    - runas: {{ desktop_user }}
+    - env:
+        XDG_RUNTIME_DIR: /run/user/{{ desktop_uid }}
+    - onlyif: /usr/bin/test -d /run/user/{{ desktop_uid }}
+    - unless: {{ terminal_runtime_ready|join(' && ') }}
+    - require:
+      - cmd: qubes_gui_hud_terminal_runtime
+
+{% for view, desktop, title, wmclass, command in terminal_views %}
+qubes_gui_hud_{{ view }}{% if view in ['dom0', 'xen'] %}_logs{% endif %}_desktop:
+  file.managed:
+    - name: /usr/share/applications/qubes-hud-{{ desktop }}.desktop
+    - source: salt://qubes_gui/hud/files/qubes-hud-terminal.desktop
+    - template: jinja
+    - context:
+        desktop_uid: {{ desktop_uid }}
+        view: {{ view }}
+        wmclass: {{ wmclass }}
+        title: {{ title }}
+        command: {{ command }}
+    - user: root
+    - group: root
+    - mode: '0644'
+    - require:
+      - cmd: qubes_gui_hud_terminal_runtime
+      - cmd: qubes_gui_hud_terminal_current_runtime
+{% endfor %}
+
+{# Delete only guarded legacy modules after both the bindings-only entrypoint
+   and its native replacements validate. Running Python panes retain imports. #}
+{% for module, path in [('logs', logs_module), ('monitor', monitor_module)] %}
+qubes_gui_hud_remove_legacy_{{ module }}_module:
+  file.absent:
+    - name: {{ path }}
+    - require:
       - cmd: qubes_gui_hud_bindings_runtime
+      - cmd: qubes_gui_hud_workspace_runtime
+{% for view, desktop, title, wmclass, command in terminal_views %}
+      - file: qubes_gui_hud_{{ view }}{% if view in ['dom0', 'xen'] %}_logs{% endif %}_desktop
+{% endfor %}
+{% endfor %}
 
 qubes_gui_hud_picom_config:
   file.managed:
@@ -767,6 +884,13 @@ qubes_gui_hud_autostart_helper:
       - cmd: qubes_gui_hud_glow_runtime
       - cmd: qubes_gui_hud_bindings_runtime
       - cmd: qubes_gui_hud_workspace_runtime
+      - cmd: qubes_gui_hud_terminal_runtime
+      - cmd: qubes_gui_hud_terminal_current_runtime
+{% for view, desktop, title, wmclass, command in terminal_views %}
+      - file: qubes_gui_hud_{{ view }}{% if view in ['dom0', 'xen'] %}_logs{% endif %}_desktop
+{% endfor %}
+      - file: qubes_gui_hud_remove_legacy_logs_module
+      - file: qubes_gui_hud_remove_legacy_monitor_module
 
 {% if legacy_picom_owned %}
 qubes_gui_hud_remove_owned_legacy_picom_config:

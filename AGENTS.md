@@ -14,6 +14,15 @@ change, including experiments.
   worktree and code. Verify `git status`, recent commits, and the relevant Salt
   states before acting.
 
+## Minimize custom code
+
+- Prefer declarative Salt states and configuration of stock Qubes programs
+  over additional Python, shell, or other runtime helpers.
+- Check existing program capabilities before adding or extending a helper.
+  Keep unavoidable custom code small, shared, and documented with its reason.
+- Putting a script inside Salt YAML does not remove its custom-code maintenance
+  cost. Reduce the underlying runtime code while preserving required behavior.
+
 ## Offline Qubes deployment
 
 - Treat the deployment target as a clean, supported Qubes OS installation
