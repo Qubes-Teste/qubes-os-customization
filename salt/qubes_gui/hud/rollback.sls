@@ -6,12 +6,45 @@
 {% set desktop_home = user_info.get('home', '/home/' ~ desktop_user) if user_info else '/home/' ~ desktop_user %}
 {% set owner_marker = 'Managed by qubes-os-customization Salt formula' %}
 {% set hud_asset_marker = 'Qubes HUD managed file. Owner: salt/qubes_gui/hud.' %}
+{% set legacy_i3_sha256 = 'fbd035f0e776acf755cffb021e8ef922b1da005ce4c54b3e54f3af545daf1f8f' %}
+{% set i3_compat_sha256 = '5894d81ca085866185170577ec4a957e8094c60cca5f986d532399f15dac8402' %}
 {% set release = grains.get('osrelease', '')|string %}
 {% set architecture = grains.get('cpuarch', grains.get('osarch', ''))|string %}
 {% set platform_ok = grains.get('virtual') == 'Qubes'
     and grains.get('virtual_subtype') == 'Xen Dom0'
     and (release == '4.3' or release.startswith('4.3.'))
     and architecture == 'x86_64' %}
+
+{# The base formula supplies i3. Match /usr/bin/i3 to the installed RPM's
+   SHA-256 record so a package update is accepted without trusting a replacement
+   binary merely because it is present at the packaged pathname. #}
+{% set official_i3_lstat = salt['file.lstat']('/usr/bin/i3') %}
+{% set official_i3_package = salt['cmd.run'](
+    "/usr/bin/rpm -qf --qf '%{NAME}' /usr/bin/i3",
+    python_shell=false, ignore_retcode=true)|trim %}
+{% set official_i3_digest_algorithm = salt['cmd.run'](
+    "/usr/bin/rpm -q --qf '%{FILEDIGESTALGO}' i3",
+    python_shell=false, ignore_retcode=true)|trim %}
+{% set official_i3_files = salt['cmd.run'](
+    "/usr/bin/rpm -q --qf '[%{FILENAMES}\\t%{FILEDIGESTS}\\n]' i3",
+    python_shell=false, ignore_retcode=true) %}
+{% set official_i3_digest = namespace(value='') %}
+{% for line in official_i3_files.splitlines() %}
+  {% set fields = line.split('\t') %}
+  {% if fields|length == 2 and fields[0] == '/usr/bin/i3' %}
+    {% set official_i3_digest.value = fields[1] %}
+  {% endif %}
+{% endfor %}
+{% set official_i3_verified = official_i3_package == 'i3'
+    and official_i3_digest_algorithm == '8'
+    and official_i3_digest.value|length == 64
+    and salt['file.file_exists']('/usr/bin/i3')
+    and not salt['file.is_link']('/usr/bin/i3')
+    and official_i3_lstat.get('st_uid') == 0
+    and official_i3_lstat.get('st_gid') == 0
+    and salt['file.get_mode']('/usr/bin/i3') == '0755'
+    and salt['file.get_hash']('/usr/bin/i3', 'sha256')
+        == official_i3_digest.value %}
 
 {% set user_i3_config = desktop_home ~ '/.config/i3/config' %}
 {% set user_rofi_theme = desktop_home ~ '/.config/rofi/config.rasi' %}
@@ -25,10 +58,16 @@
 {% set official_i3_lightdm_config = '/etc/lightdm/lightdm.conf.d/90-qubes-i3.conf' %}
 {% set hud_lightdm_config = '/etc/lightdm/lightdm.conf.d/91-qubes-hud.conf' %}
 {% set hud_xsession = '/usr/share/xsessions/qubes-hud.desktop' %}
-{% set hud_binary = '/usr/local/libexec/qubes-hud/i3' %}
-{% set hud_binary_owner = '/usr/local/libexec/qubes-hud/i3.owner' %}
+{% set legacy_i3_binary = '/usr/local/libexec/qubes-hud/i3' %}
+{% set legacy_i3_owner = '/usr/local/libexec/qubes-hud/i3.owner' %}
 {% set keyboard_helper = '/usr/local/libexec/qubes-hud/apply-keyboard-layout' %}
 {% set hud_autostart_helper = '/usr/local/libexec/qubes-hud/hud-xdg-autostart' %}
+{% set glow_helper = '/usr/local/libexec/qubes-hud/hud-glow' %}
+{% set glow_pixels = '/usr/local/libexec/qubes-hud/glow_pixels.py' %}
+{% set bindings_helper = '/usr/local/libexec/qubes-hud/hud-bindings' %}
+{% set bindings_keyboard = '/usr/local/libexec/qubes-hud/bindings_keyboard.py' %}
+{% set bindings_data = '/usr/local/libexec/qubes-hud/bindings.json' %}
+{% set bindings_desktop = '/usr/share/applications/qubes-hud-bindings.desktop' %}
 {% set picom_config = '/usr/local/libexec/qubes-hud/picom.conf' %}
 {% set window_shader = '/usr/local/libexec/qubes-hud/window-glass.glsl' %}
 {% set legacy_picom_config = '/etc/xdg/picom.conf' %}
@@ -51,10 +90,48 @@
 {% set hud_wallpaper_owner = '/usr/share/backgrounds/qubes-hud.png.owner' %}
 
 {# Refuse every unexpected inode before any file.absent state can run. #}
-{% set binary_owner_regular = salt['file.file_exists'](hud_binary_owner)
-    and not salt['file.is_link'](hud_binary_owner) %}
-{% set binary_owner_owned = owner_marker in salt['file.read'](hud_binary_owner)
-    if binary_owner_regular else false %}
+{# The retired executable is replaced only when its exact bytes and adjacent
+   record prove ownership. Either known record may accompany either known file
+   during an interrupted migration. Writing the new record first also makes a
+   partial first install, with only the record present, recoverable. #}
+{% set legacy_i3_lstat = salt['file.lstat'](legacy_i3_binary) %}
+{% set legacy_i3_exists = legacy_i3_lstat|length > 0 %}
+{% set legacy_i3_owner_lstat = salt['file.lstat'](legacy_i3_owner) %}
+{% set legacy_i3_owner_exists = legacy_i3_owner_lstat|length > 0 %}
+{% set legacy_i3_owner_regular = salt['file.file_exists'](legacy_i3_owner)
+    and not salt['file.is_link'](legacy_i3_owner) %}
+{% set legacy_i3_expected_record = '# ' ~ owner_marker ~ '.\n'
+    ~ 'target=' ~ legacy_i3_binary ~ '\n'
+    ~ 'sha256=' ~ legacy_i3_sha256 ~ '\n' %}
+{% set i3_compat_expected_record = '# ' ~ owner_marker ~ '.\n'
+    ~ 'target=' ~ legacy_i3_binary ~ '\n'
+    ~ 'sha256=' ~ i3_compat_sha256 ~ '\n' %}
+{% set legacy_i3_owner_owned = legacy_i3_owner_regular
+    and legacy_i3_owner_lstat.get('st_uid') == 0
+    and legacy_i3_owner_lstat.get('st_gid') == 0
+    and salt['file.get_mode'](legacy_i3_owner) == '0644'
+    and salt['file.read'](legacy_i3_owner) in [
+        legacy_i3_expected_record, i3_compat_expected_record] %}
+{% set legacy_i3_owned = legacy_i3_exists
+    and salt['file.file_exists'](legacy_i3_binary)
+    and not salt['file.is_link'](legacy_i3_binary)
+    and legacy_i3_lstat.get('st_uid') == 0
+    and legacy_i3_lstat.get('st_gid') == 0
+    and salt['file.get_mode'](legacy_i3_binary) == '0755'
+    and legacy_i3_owner_owned
+    and salt['file.get_hash'](legacy_i3_binary, 'sha256') in [
+        legacy_i3_sha256, i3_compat_sha256] %}
+{# An old custom i3 can still be running from its replaced/unlinked inode.
+   Retain its restart pathname until that process exits or restarts officially.
+   Unreadable process information conservatively prevents cleanup. #}
+{% set legacy_i3_idle_check = "/usr/bin/python3 -c 'import os, pathlib, sys\n"
+    ~ 'for entry in pathlib.Path("/proc").iterdir():\n'
+    ~ '    if not entry.name.isdecimal(): continue\n'
+    ~ '    try: target = os.readlink(entry.joinpath("exe"))\n'
+    ~ '    except (FileNotFoundError, ProcessLookupError): continue\n'
+    ~ '    except PermissionError: sys.exit(1)\n'
+    ~ '    if target in (sys.argv[1], sys.argv[1] + " (deleted)"): sys.exit(1)\n'
+    ~ "' " ~ legacy_i3_binary %}
 {% set wallpaper_owner_regular = salt['file.file_exists'](hud_wallpaper_owner)
     and not salt['file.is_link'](hud_wallpaper_owner) %}
 {% set wallpaper_owner_owned = owner_marker in salt['file.read'](hud_wallpaper_owner)
@@ -187,9 +264,14 @@
     (official_i3_lightdm_config, [owner_marker]),
     (hud_lightdm_config, [owner_marker]),
     (hud_xsession, [owner_marker]),
-    (hud_binary_owner, [owner_marker]),
     (keyboard_helper, [owner_marker]),
     (hud_autostart_helper, [owner_marker]),
+    (glow_helper, [hud_asset_marker]),
+    (glow_pixels, [hud_asset_marker]),
+    (bindings_helper, [hud_asset_marker]),
+    (bindings_keyboard, [hud_asset_marker]),
+    (bindings_data, [hud_asset_marker]),
+    (bindings_desktop, [hud_asset_marker]),
     (picom_config, [owner_marker, hud_asset_marker]),
     (window_shader, [hud_asset_marker]),
     (picom_package_owner, [owner_marker]),
@@ -210,6 +292,7 @@
     '/usr',
     '/usr/share',
     '/usr/share/icons',
+    '/usr/share/applications',
     desktop_home,
     desktop_home ~ '/.config',
     desktop_home ~ '/.config/i3',
@@ -277,6 +360,19 @@
   {% endif %}
 {% endfor %}
 
+{% for path, expected_mode in [
+    (glow_helper, '0755'), (glow_pixels, '0644'),
+    (bindings_helper, '0755'), (bindings_keyboard, '0644'),
+    (bindings_data, '0644'), (bindings_desktop, '0644')
+] %}
+  {% set target_lstat = salt['file.lstat'](path) %}
+  {% if target_lstat|length > 0 and (
+      target_lstat.get('st_uid') != 0 or target_lstat.get('st_gid') != 0
+      or salt['file.get_mode'](path) != expected_mode) %}
+    {% set collision.found = true %}
+  {% endif %}
+{% endfor %}
+
 {% for path in directory_targets %}
   {% set directory_lstat = salt['file.lstat'](path) %}
   {% if directory_lstat|length > 0
@@ -286,7 +382,6 @@
 {% endfor %}
 
 {% for target, owner_owned in [
-    (hud_binary, binary_owner_owned),
     (hud_wallpaper, wallpaper_owner_owned)
 ] %}
   {% set target_lstat = salt['file.lstat'](target) %}
@@ -297,6 +392,13 @@
     {% set collision.found = true %}
   {% endif %}
 {% endfor %}
+
+{% if legacy_i3_owner_exists and not legacy_i3_owner_owned %}
+  {% set collision.found = true %}
+{% endif %}
+{% if legacy_i3_exists and not legacy_i3_owned %}
+  {% set collision.found = true %}
+{% endif %}
 
 {% set unmanaged_collision = collision.found %}
 
@@ -309,6 +411,13 @@ qubes_gui_hud_rollback_unsupported_platform:
 qubes_gui_hud_rollback_missing_desktop_user:
   test.fail_without_changes:
     - name: The configured desktop user '{{ desktop_user }}' does not exist.
+
+{% elif not official_i3_verified %}
+qubes_gui_hud_rollback_official_i3_required:
+  test.fail_without_changes:
+    - name: >-
+        Refusing rollback without an intact, root-owned /usr/bin/i3 matching
+        the installed i3 RPM. Restore the official i3 package first.
 
 {% elif unmanaged_collision %}
 qubes_gui_hud_rollback_unmanaged_target_refused:
@@ -543,17 +652,29 @@ qubes_gui_hud_rollback_remove_wallpaper_owner:
     - require:
       - file: qubes_gui_hud_rollback_remove_wallpaper
 
-qubes_gui_hud_rollback_remove_binary:
+{% if legacy_i3_exists %}
+qubes_gui_hud_rollback_remove_idle_legacy_i3_binary:
   file.absent:
-    - name: {{ hud_binary }}
+    - name: {{ legacy_i3_binary }}
+    - onlyif: {{ legacy_i3_idle_check|tojson }}
     - require:
       - cmd: qubes_gui_hud_rollback_accountsservice_session
+      - file: qubes_gui_hud_rollback_remove_xsession
+{% endif %}
 
-qubes_gui_hud_rollback_remove_binary_owner:
+{% if legacy_i3_owner_exists %}
+qubes_gui_hud_rollback_remove_legacy_i3_owner:
   file.absent:
-    - name: {{ hud_binary_owner }}
+    - name: {{ legacy_i3_owner }}
+    - onlyif: >-
+        /usr/bin/python3 -c 'import os, sys;
+        sys.exit(os.path.lexists(sys.argv[1]))' {{ legacy_i3_binary }}
     - require:
-      - file: qubes_gui_hud_rollback_remove_binary
+      - cmd: qubes_gui_hud_rollback_accountsservice_session
+{% if legacy_i3_exists %}
+      - file: qubes_gui_hud_rollback_remove_idle_legacy_i3_binary
+{% endif %}
+{% endif %}
 
 qubes_gui_hud_rollback_remove_keyboard_helper:
   file.absent:
@@ -566,6 +687,42 @@ qubes_gui_hud_rollback_remove_autostart_helper:
     - name: {{ hud_autostart_helper }}
     - require:
       - cmd: qubes_gui_hud_rollback_accountsservice_session
+
+qubes_gui_hud_rollback_remove_bindings_desktop:
+  file.absent:
+    - name: {{ bindings_desktop }}
+    - require:
+      - file: qubes_gui_hud_rollback_remove_autostart_helper
+
+qubes_gui_hud_rollback_remove_bindings_helper:
+  file.absent:
+    - name: {{ bindings_helper }}
+    - require:
+      - file: qubes_gui_hud_rollback_remove_bindings_desktop
+
+qubes_gui_hud_rollback_remove_bindings_keyboard:
+  file.absent:
+    - name: {{ bindings_keyboard }}
+    - require:
+      - file: qubes_gui_hud_rollback_remove_bindings_helper
+
+qubes_gui_hud_rollback_remove_bindings_data:
+  file.absent:
+    - name: {{ bindings_data }}
+    - require:
+      - file: qubes_gui_hud_rollback_remove_bindings_helper
+
+qubes_gui_hud_rollback_remove_glow_helper:
+  file.absent:
+    - name: {{ glow_helper }}
+    - require:
+      - file: qubes_gui_hud_rollback_remove_autostart_helper
+
+qubes_gui_hud_rollback_remove_glow_pixels:
+  file.absent:
+    - name: {{ glow_pixels }}
+    - require:
+      - file: qubes_gui_hud_rollback_remove_glow_helper
 
 qubes_gui_hud_rollback_remove_picom_config:
   file.absent:
@@ -595,6 +752,7 @@ qubes_gui_hud_rollback_remove_owned_picom_package:
       - file: qubes_gui_hud_rollback_remove_autostart_helper
       - file: qubes_gui_hud_rollback_remove_picom_config
       - file: qubes_gui_hud_rollback_remove_window_shader
+      - file: qubes_gui_hud_rollback_remove_glow_pixels
 {% if legacy_picom_owned %}
       - file: qubes_gui_hud_rollback_remove_owned_legacy_picom_config
 {% endif %}

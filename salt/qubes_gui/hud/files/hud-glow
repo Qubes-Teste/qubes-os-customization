@@ -1,0 +1,479 @@
+#!/usr/bin/python3
+# Qubes HUD managed file. Owner: salt/qubes_gui/hud.
+"""Render input-transparent glow surfaces behind application frames in Qubes HUD.
+
+Uses Python's standard library and the stock desktop's X11 runtime libraries.
+The matching managed Picom configuration is required. Stop with SIGTERM.
+"""
+
+import argparse
+import ctypes as C
+import json
+import os
+from pathlib import Path
+import select
+import signal
+import sys
+import time
+
+from glow_pixels import render_glow
+
+P = C.c_void_p
+I = C.c_int
+U = C.c_uint
+L = C.c_ulong
+B = C.c_ubyte
+
+
+class Attributes(C.Structure):
+    _fields_ = [(n, I) for n in ('x', 'y', 'width', 'height', 'border_width', 'depth')] + [
+        ('visual', P), ('root', L), ('window_class', I), ('bit_gravity', I),
+        ('win_gravity', I), ('backing_store', I), ('backing_planes', L),
+        ('backing_pixel', L), ('save_under', I), ('colormap', L),
+        ('map_installed', I), ('map_state', I), ('all_event_masks', C.c_long),
+        ('your_event_mask', C.c_long), ('do_not_propagate_mask', C.c_long),
+        ('override_redirect', I), ('screen', P)]
+
+
+class SetAttributes(C.Structure):
+    _fields_ = [('background_pixmap', L), ('background_pixel', L),
+                ('border_pixmap', L), ('border_pixel', L), ('bit_gravity', I),
+                ('win_gravity', I), ('backing_store', I), ('backing_planes', L),
+                ('backing_pixel', L), ('save_under', I), ('event_mask', C.c_long),
+                ('do_not_propagate_mask', C.c_long), ('override_redirect', I),
+                ('colormap', L), ('cursor', L)]
+
+
+class VisualInfo(C.Structure):
+    _fields_ = [('visual', P), ('visualid', L), ('screen', I), ('depth', I),
+                ('visual_class', I), ('red_mask', L), ('green_mask', L),
+                ('blue_mask', L), ('colormap_size', I), ('bits_per_rgb', I)]
+
+
+class DirectFormat(C.Structure):
+    _fields_ = [(n, C.c_short) for n in ('red', 'redMask', 'green', 'greenMask',
+                                       'blue', 'blueMask', 'alpha', 'alphaMask')]
+
+
+class PictFormat(C.Structure):
+    _fields_ = [('id', L), ('type', I), ('depth', I),
+                ('direct', DirectFormat), ('colormap', L)]
+
+
+class Image(C.Structure):
+    _fields_ = [(n, I) for n in ('width', 'height', 'xoffset', 'format')] + [
+        ('data', P)] + [(n, I) for n in ('byte_order', 'bitmap_unit', 'bitmap_bit_order',
+                                       'bitmap_pad', 'depth', 'bytes_per_line', 'bits_per_pixel')] + [
+        ('red_mask', L), ('green_mask', L), ('blue_mask', L), ('obdata', P), ('funcs', P * 6)]
+
+
+class Changes(C.Structure):
+    _fields_ = [(n, I) for n in ('x', 'y', 'width', 'height', 'border_width')] + [
+        ('sibling', L), ('stack_mode', I)]
+
+
+class Error(C.Structure):
+    _fields_ = [('type', I), ('display', P), ('resourceid', L), ('serial', L),
+                ('error_code', B), ('request_code', B), ('minor_code', B)]
+
+
+class ClassHint(C.Structure):
+    _fields_ = [('res_name', C.c_char_p), ('res_class', C.c_char_p)]
+
+
+class Event(C.Union):
+    _fields_ = [('type', I), ('pad', C.c_long * 24)]
+
+
+def bind(lib, name, result, *args):
+    fn = getattr(lib, name)
+    fn.restype, fn.argtypes = result, args
+    return fn
+
+
+class X11:
+    def __init__(self, display=None, check_only=False):
+        # SONAMEs of packages already required by the stock desktop.
+        self.x = C.CDLL('libX11.so.6')
+        self.render = C.CDLL('libXrender.so.1')
+        self.fixes = C.CDLL('libXfixes.so.3')
+        x = self.x
+        bind(x, 'XOpenDisplay', P, C.c_char_p)
+        bind(x, 'XCloseDisplay', I, P)
+        bind(x, 'XDefaultScreen', I, P)
+        bind(x, 'XRootWindow', L, P, I)
+        bind(x, 'XConnectionNumber', I, P)
+        bind(x, 'XInternAtom', L, P, C.c_char_p, I)
+        bind(x, 'XGetWindowAttributes', I, P, L, C.POINTER(Attributes))
+        bind(x, 'XGetWindowProperty', I, P, L, L, C.c_long, C.c_long, I, L,
+             C.POINTER(L), C.POINTER(I), C.POINTER(L), C.POINTER(L), C.POINTER(P))
+        bind(x, 'XQueryTree', I, P, L, C.POINTER(L), C.POINTER(L), C.POINTER(P), C.POINTER(U))
+        bind(x, 'XFree', I, P)
+        bind(x, 'XGetVisualInfo', C.POINTER(VisualInfo), P, C.c_long, C.POINTER(VisualInfo), C.POINTER(I))
+        bind(x, 'XCreateColormap', L, P, L, P, I)
+        bind(x, 'XFreeColormap', I, P, L)
+        bind(x, 'XCreateWindow', L, P, L, I, I, U, U, U, I, U, P, L, C.POINTER(SetAttributes))
+        bind(x, 'XDestroyWindow', I, P, L)
+        bind(x, 'XMapWindow', I, P, L)
+        bind(x, 'XUnmapWindow', I, P, L)
+        bind(x, 'XMoveResizeWindow', I, P, L, I, I, U, U)
+        bind(x, 'XConfigureWindow', I, P, L, U, C.POINTER(Changes))
+        bind(x, 'XSetClassHint', I, P, L, C.POINTER(ClassHint))
+        bind(x, 'XStoreName', I, P, L, C.c_char_p)
+        bind(x, 'XChangeProperty', I, P, L, L, L, I, I, P, I)
+        bind(x, 'XSelectInput', I, P, L, C.c_long)
+        bind(x, 'XPending', I, P)
+        bind(x, 'XNextEvent', I, P, C.POINTER(Event))
+        bind(x, 'XSync', I, P, I)
+        bind(x, 'XFlush', I, P)
+        bind(x, 'XCreatePixmap', L, P, L, U, U, U)
+        bind(x, 'XFreePixmap', I, P, L)
+        bind(x, 'XCreateGC', P, P, L, L, P)
+        bind(x, 'XFreeGC', I, P, P)
+        bind(x, 'XCreateImage', C.POINTER(Image), P, P, U, I, I, P, U, U, I, I)
+        bind(x, 'XDestroyImage', I, C.POINTER(Image))
+        bind(x, 'XPutImage', I, P, L, P, C.POINTER(Image), I, I, I, I, U, U)
+        bind(x, 'XSetWindowBackgroundPixmap', I, P, L, L)
+        bind(x, 'XClearWindow', I, P, L)
+        bind(x, 'XGetSelectionOwner', L, P, L)
+        bind(x, 'XSetSelectionOwner', I, P, L, L, L)
+        self.callback_type = C.CFUNCTYPE(I, P, C.POINTER(Error))
+        bind(x, 'XSetErrorHandler', P, self.callback_type)
+        bind(self.render, 'XRenderFindVisualFormat', C.POINTER(PictFormat), P, P)
+        bind(self.fixes, 'XFixesQueryExtension', I, P, C.POINTER(I), C.POINTER(I))
+        bind(self.fixes, 'XFixesQueryVersion', I, P, C.POINTER(I), C.POINTER(I))
+        bind(self.fixes, 'XFixesCreateRegion', L, P, P, I)
+        bind(self.fixes, 'XFixesDestroyRegion', None, P, L)
+        bind(self.fixes, 'XFixesSetWindowShapeRegion', None, P, L, I, I, I, L)
+        # Bind every required symbol before checking DISPLAY or touching X11.
+        # Salt uses this branch as root to validate installed runtime libraries.
+        if check_only:
+            return
+        self.d = x.XOpenDisplay(display.encode() if display else None)
+        if not self.d:
+            raise RuntimeError('Cannot open X11 display')
+        self.errors = []
+        self.error_handler = self.callback_type(self.on_error)
+        x.XSetErrorHandler(self.error_handler)
+        self.screen = x.XDefaultScreen(self.d)
+        self.root = x.XRootWindow(self.d, self.screen)
+        self.atoms = {}
+        self.owned = set()
+        self.visual = self.argb_visual()
+        event, error = I(), I()
+        major, minor = I(5), I(0)
+        if not self.fixes.XFixesQueryExtension(self.d, C.byref(event), C.byref(error)):
+            raise RuntimeError('XFixes is required for input-transparent surfaces')
+        if not self.fixes.XFixesQueryVersion(self.d, C.byref(major), C.byref(minor)) or major.value < 2:
+            raise RuntimeError('XFixes version 2 or newer is required')
+        self.colormap = x.XCreateColormap(self.d, self.root, self.visual, 0)
+        self.empty_region = self.fixes.XFixesCreateRegion(self.d, None, 0)
+        self.compositor = self.atom(f'_NET_WM_CM_S{self.screen}')
+        self.selection = self.atom(f'_QUBES_HUD_GLOW_S{self.screen}')
+        if x.XGetSelectionOwner(self.d, self.selection):
+            raise RuntimeError('A glow helper is already running on this screen')
+        self.marker = self.create(0, 0, 1, 1)
+        x.XSetSelectionOwner(self.d, self.selection, self.marker, 0)
+        self.check()
+        if x.XGetSelectionOwner(self.d, self.selection) != self.marker:
+            raise RuntimeError('Unable to acquire glow-helper selection')
+
+    def on_error(self, display, event):
+        e = event.contents
+        # A client may disappear between querying its state and selecting events.
+        if not (e.error_code == 3 and e.resourceid not in self.owned):
+            self.errors.append((e.error_code, e.request_code, e.resourceid))
+        return 0
+
+    def check(self):
+        self.x.XSync(self.d, 0)
+        if self.errors:
+            raise RuntimeError(f'X11 errors: {self.errors[:8]}')
+
+    def atom(self, name):
+        if name not in self.atoms:
+            self.atoms[name] = self.x.XInternAtom(self.d, name.encode(), 0)
+        return self.atoms[name]
+
+    def attributes(self, window):
+        value = Attributes()
+        return value if self.x.XGetWindowAttributes(self.d, window, C.byref(value)) else None
+
+    def property(self, window, name, expected=32, limit=4096):
+        actual, count, remaining, fmt, data = L(), L(), L(), I(), P()
+        result = self.x.XGetWindowProperty(self.d, window, self.atom(name), 0, limit,
+                    0, 0, C.byref(actual), C.byref(fmt), C.byref(count), C.byref(remaining), C.byref(data))
+        try:
+            if result or fmt.value != expected or remaining.value or not data:
+                return [] if expected == 32 else b''
+            if expected == 32:
+                return list(C.cast(data, C.POINTER(L))[:count.value])
+            return C.string_at(data, count.value)
+        finally:
+            if data:
+                self.x.XFree(data)
+
+    def tree(self, window):
+        root, parent, count, data = L(), L(), U(), P()
+        result = self.x.XQueryTree(self.d, window, C.byref(root), C.byref(parent), C.byref(data), C.byref(count))
+        try:
+            if not result:
+                return None, []
+            if count.value > 16384:
+                raise RuntimeError('Unexpectedly large X11 window tree')
+            return parent.value, list(C.cast(data, C.POINTER(L))[:count.value]) if data else []
+        finally:
+            if data:
+                self.x.XFree(data)
+
+    def frame(self, client):
+        current = client
+        for _ in range(16):
+            parent, _ = self.tree(current)
+            if parent == self.root:
+                return current
+            if not parent:
+                return None
+            current = parent
+        return None
+
+    def argb_visual(self):
+        template, count = VisualInfo(screen=self.screen, depth=32, visual_class=4), I()
+        infos = self.x.XGetVisualInfo(self.d, 2 | 4 | 8, C.byref(template), C.byref(count))
+        try:
+            for index in range(count.value):
+                info = infos[index]
+                fmt = self.render.XRenderFindVisualFormat(self.d, info.visual)
+                if (fmt and fmt.contents.direct.alphaMask == 255 and
+                        fmt.contents.direct.alpha == 24 and info.red_mask == 0xff0000 and
+                        info.green_mask == 0xff00 and info.blue_mask == 0xff):
+                    return info.visual
+        finally:
+            if infos:
+                self.x.XFree(infos)
+        raise RuntimeError('A standard ARGB32 visual is required')
+
+    def set_numbers(self, window, name, kind, values):
+        data = (L * len(values))(*values)
+        self.x.XChangeProperty(self.d, window, self.atom(name), self.atom(kind),
+                              32, 0, data, len(values))
+
+    def create(self, x, y, width, height):
+        attrs = SetAttributes(background_pixel=0, border_pixel=0,
+                              override_redirect=1, colormap=self.colormap)
+        window = self.x.XCreateWindow(self.d, self.root, x, y, width, height, 0, 32,
+                                     1, self.visual, 2 | 8 | 512 | 8192, C.byref(attrs))
+        self.owned.add(window)
+        # Set an empty input shape before this window can ever become visible.
+        self.fixes.XFixesSetWindowShapeRegion(self.d, window, 2, 0, 0, self.empty_region)
+        hint = ClassHint(b'qubes-hud-glow', b'QubesHudGlow')
+        self.x.XSetClassHint(self.d, window, C.byref(hint))
+        self.x.XStoreName(self.d, window, b'Qubes HUD decorative glow')
+        self.set_numbers(window, '_NET_WM_PID', 'CARDINAL', [os.getpid()])
+        self.set_numbers(window, '_NET_WM_WINDOW_TYPE', 'ATOM', [self.atom('_NET_WM_WINDOW_TYPE_TOOLTIP')])
+        self.check()
+        return window
+
+    def destroy(self, window):
+        self.x.XDestroyWindow(self.d, window)
+        self.owned.discard(window)
+
+    def paint(self, window, width, height, pixels):
+        # XCreateImage borrows the Python buffer only through XPutImage. Null it
+        # before XDestroyImage so Xlib never attempts to free Python memory.
+        data = C.create_string_buffer(pixels)
+        image = self.x.XCreateImage(self.d, self.visual, 32, 2, 0, data, width, height, 32, width * 4)
+        if not image:
+            raise RuntimeError('Cannot create XImage')
+        pixmap, gc = 0, None
+        try:
+            image.contents.byte_order = 0 if sys.byteorder == 'little' else 1
+            if image.contents.bits_per_pixel != 32 or image.contents.bytes_per_line != width * 4:
+                raise RuntimeError('Unsupported XImage layout')
+            pixmap = self.x.XCreatePixmap(self.d, self.root, width, height, 32)
+            gc = self.x.XCreateGC(self.d, pixmap, 0, None)
+            self.x.XPutImage(self.d, pixmap, gc, image, 0, 0, 0, 0, width, height)
+            self.x.XSetWindowBackgroundPixmap(self.d, window, pixmap)
+            self.x.XClearWindow(self.d, window)
+            self.check()
+        finally:
+            if gc:
+                self.x.XFreeGC(self.d, gc)
+            if pixmap:
+                self.x.XFreePixmap(self.d, pixmap)
+            image.contents.data = None
+            self.x.XDestroyImage(image)
+
+    def close(self):
+        # Closing our display connection also releases every owned X resource,
+        # including the helper selection. Application resources are untouched.
+        if self.d:
+            self.x.XCloseDisplay(self.d)
+            self.d = None
+
+
+class Overlay:
+    def __init__(self, x11, args):
+        self.x11, self.args = x11, args
+        self.surfaces = {}
+        self.watched = set()
+        self.last_status = None
+        self.started = time.monotonic()
+        x11.x.XSelectInput(x11.d, x11.root, (1 << 17) | (1 << 19) | (1 << 22))
+
+    def candidates(self):
+        x = self.x11
+        candidates = {}
+        clients = x.property(x.root, '_NET_CLIENT_LIST_STACKING')
+        if len(clients) > 512:
+            raise RuntimeError('Too many managed clients for the glow helper')
+        self.watched.intersection_update(clients)
+        for client in clients:
+            attrs = x.attributes(client)
+            if not attrs or attrs.override_redirect:
+                continue
+            if client not in self.watched:
+                x.x.XSelectInput(x.d, client, (1 << 17) | (1 << 22))
+                self.watched.add(client)
+            if attrs.map_state != 2:
+                continue
+            states = x.property(client, '_NET_WM_STATE')
+            if any(x.atom('_NET_WM_STATE_' + s) in states for s in ('FULLSCREEN', 'HIDDEN')):
+                continue
+            types = x.property(client, '_NET_WM_WINDOW_TYPE')
+            ordinary = any(x.atom('_NET_WM_WINDOW_TYPE_' + t) in types for t in ('NORMAL', 'DIALOG', 'UTILITY'))
+            qube = x.property(client, '_QUBES_VMNAME', 8)
+            if x.atom('_NET_WM_WINDOW_TYPE_DOCK') in types or not (not types or ordinary or qube):
+                continue
+            frame = x.frame(client)
+            frame_attrs = x.attributes(frame) if frame else None
+            if not frame_attrs or frame_attrs.map_state != 2:
+                continue
+            w = frame_attrs.width + 2 * frame_attrs.border_width
+            h = frame_attrs.height + 2 * frame_attrs.border_width
+            padded_area = (w + 2 * self.args.extent) * (h + 2 * self.args.extent)
+            if not (1 <= w <= 8192 and 1 <= h <= 8192 and padded_area <= 16777216):
+                continue
+            candidates[frame] = (frame_attrs.x, frame_attrs.y, w, h, client)
+        return candidates
+
+    def update(self):
+        x, args = self.x11, self.args
+        if not x.x.XGetSelectionOwner(x.d, x.compositor):
+            raise RuntimeError('Compositor disappeared; removing glow')
+        if x.x.XGetSelectionOwner(x.d, x.selection) != x.marker:
+            raise RuntimeError('Glow helper selection lost')
+        candidates = self.candidates()
+        if len(candidates) > 64:
+            raise RuntimeError('Too many visible windows for the glow helper')
+        total_pixels = sum((w + 2 * args.extent) * (h + 2 * args.extent)
+                           for _, _, w, h, _ in candidates.values())
+        if total_pixels > 32 * 1024 * 1024:
+            raise RuntimeError('Visible glow surfaces exceed the 128 MiB budget')
+        for frame in list(self.surfaces):
+            if frame not in candidates:
+                x.destroy(self.surfaces.pop(frame)['window'])
+        for frame, (left, top, width, height, client) in candidates.items():
+            surface = self.surfaces.get(frame)
+            geometry = (left - args.extent, top - args.extent,
+                        width + 2 * args.extent, height + 2 * args.extent)
+            size = (width, height)
+            if not surface:
+                window = x.create(*geometry)
+                x.set_numbers(window, '_QUBES_HUD_GLOW_FOR', 'WINDOW', [client, frame])
+                surface = {'window': window, 'geometry': None, 'size': None}
+                self.surfaces[frame] = surface
+            window = surface['window']
+            if surface['geometry'] != geometry:
+                x.x.XMoveResizeWindow(x.d, window, *geometry)
+                surface['geometry'] = geometry
+            if surface['size'] != size:
+                radius = min(args.radius, width / 2, height / 2)
+                pw, ph, pixels = render_glow(width, height, radius=radius,
+                                             extent=args.extent, peak=args.peak)
+                x.paint(window, pw, ph, pixels)
+                surface['size'] = size
+            # Re-query order after each change: moving a surface changes indices.
+            _, children = x.tree(x.root)
+            if frame not in children:
+                x.x.XUnmapWindow(x.d, window)
+                continue
+            index = children.index(frame)
+            if index == 0 or children[index - 1] != window:
+                changes = Changes(sibling=frame, stack_mode=1)  # Below
+                x.x.XConfigureWindow(x.d, window, 32 | 64, C.byref(changes))
+            attrs = x.attributes(window)
+            if attrs and attrs.map_state == 0:
+                x.x.XMapWindow(x.d, window)
+        x.check()
+        if args.status:
+            state = {'pid': os.getpid(), 'radius': args.radius, 'extent': args.extent,
+                     'surfaces': {str(frame): surface for frame, surface in self.surfaces.items()}}
+            serialized = json.dumps(state, indent=2) + '\n'
+            if serialized != self.last_status:
+                target = Path(args.status)
+                temp = target.with_suffix('.new')
+                temp.write_text(serialized)
+                temp.replace(target)
+                self.last_status = serialized
+
+    def run(self):
+        running = True
+
+        def stop(signum, frame):
+            nonlocal running
+            running = False
+
+        signal.signal(signal.SIGINT, stop)
+        signal.signal(signal.SIGTERM, stop)
+        x = self.x11
+        while running:
+            if self.args.duration and time.monotonic() - self.started >= self.args.duration:
+                break
+            self.update()
+            # Coalesce bursts caused by resizing/restacking, with a periodic
+            # reconciliation for compositor loss. Never poll application pixels.
+            if not x.x.XPending(x.d):
+                select.select([x.x.XConnectionNumber(x.d)], [], [], 1.0)
+            deadline = time.monotonic() + 0.015
+            event = Event()
+            while x.x.XPending(x.d):
+                x.x.XNextEvent(x.d, C.byref(event))
+                if time.monotonic() >= deadline:
+                    break
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--display', default=os.environ.get('DISPLAY'))
+    parser.add_argument('--radius', type=int, default=12)
+    parser.add_argument('--extent', type=int, default=34)
+    parser.add_argument('--peak', type=float, default=0.35)
+    parser.add_argument('--duration', type=float, default=0)
+    parser.add_argument('--status', help='Optional status JSON path for diagnostics')
+    parser.add_argument('--check', action='store_true',
+                        help='Check required runtime libraries and symbols without opening X11')
+    args = parser.parse_args()
+    if args.check:
+        X11(check_only=True)
+        print('HUD glow runtime libraries and required symbols are available')
+        return
+    if not (0 <= args.radius <= 128 and 1 <= args.extent <= 128 and 0 < args.peak <= 1):
+        parser.error('radius 0..128, extent 1..128, peak >0..1 required')
+    if not args.display or not args.display.startswith(':'):
+        parser.error('A local X11 display is required')
+    if os.geteuid() == 0:
+        parser.error('Run as the desktop user, never as root')
+    x = X11(args.display)
+    try:
+        Overlay(x, args).run()
+    finally:
+        x.close()
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception as error:
+        print(f'Glow helper stopped: {error}', file=sys.stderr, flush=True)
+        sys.exit(1)

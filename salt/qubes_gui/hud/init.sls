@@ -7,8 +7,8 @@
 {% set desktop_home = user_info.get('home', '/home/' ~ desktop_user) if user_info else '/home/' ~ desktop_user %}
 {% set owner_marker = 'Managed by qubes-os-customization Salt formula' %}
 {% set hud_asset_marker = 'Qubes HUD managed file. Owner: salt/qubes_gui/hud.' %}
-{% set i3_hud_sha256 = 'fbd035f0e776acf755cffb021e8ef922b1da005ce4c54b3e54f3af545daf1f8f' %}
-{% set expected_i3_evr = '1000:4.25.1-1.fc41.x86_64' %}
+{% set legacy_i3_sha256 = 'fbd035f0e776acf755cffb021e8ef922b1da005ce4c54b3e54f3af545daf1f8f' %}
+{% set i3_compat_sha256 = '5894d81ca085866185170577ec4a957e8094c60cca5f986d532399f15dac8402' %}
 {% set expected_i3_settings_evr = '1.14-1.fc41' %}
 {% set release = grains.get('osrelease', '')|string %}
 {% set architecture = grains.get('cpuarch', grains.get('osarch', ''))|string %}
@@ -16,16 +16,42 @@
     and grains.get('virtual_subtype') == 'Xen Dom0'
     and (release == '4.3' or release.startswith('4.3.'))
     and architecture == 'x86_64' %}
-{% set installed_i3_evr = salt['cmd.run'](
-    "/usr/bin/rpm -q --qf '%{EPOCHNUM}:%{VERSION}-%{RELEASE}.%{ARCH}' i3",
-    python_shell=false,
-    ignore_retcode=true)|trim %}
 {% set installed_i3_settings_evr = salt['cmd.run'](
     "/usr/bin/rpm -q --qf '%{VERSION}-%{RELEASE}' i3-settings-qubes",
     python_shell=false,
     ignore_retcode=true)|trim %}
-{% set binary_hash_ready = i3_hud_sha256|length == 64 %}
 {% set runtime_packages = ['rofi', 'feh', 'picom', 'breeze-icon-theme'] %}
+
+{# The base formula supplies i3. Match /usr/bin/i3 to the installed RPM's
+   SHA-256 record so a package update is accepted without trusting a replacement
+   binary merely because it is present at the packaged pathname. #}
+{% set official_i3_lstat = salt['file.lstat']('/usr/bin/i3') %}
+{% set official_i3_package = salt['cmd.run'](
+    "/usr/bin/rpm -qf --qf '%{NAME}' /usr/bin/i3",
+    python_shell=false, ignore_retcode=true)|trim %}
+{% set official_i3_digest_algorithm = salt['cmd.run'](
+    "/usr/bin/rpm -q --qf '%{FILEDIGESTALGO}' i3",
+    python_shell=false, ignore_retcode=true)|trim %}
+{% set official_i3_files = salt['cmd.run'](
+    "/usr/bin/rpm -q --qf '[%{FILENAMES}\\t%{FILEDIGESTS}\\n]' i3",
+    python_shell=false, ignore_retcode=true) %}
+{% set official_i3_digest = namespace(value='') %}
+{% for line in official_i3_files.splitlines() %}
+  {% set fields = line.split('\t') %}
+  {% if fields|length == 2 and fields[0] == '/usr/bin/i3' %}
+    {% set official_i3_digest.value = fields[1] %}
+  {% endif %}
+{% endfor %}
+{% set official_i3_verified = official_i3_package == 'i3'
+    and official_i3_digest_algorithm == '8'
+    and official_i3_digest.value|length == 64
+    and salt['file.file_exists']('/usr/bin/i3')
+    and not salt['file.is_link']('/usr/bin/i3')
+    and official_i3_lstat.get('st_uid') == 0
+    and official_i3_lstat.get('st_gid') == 0
+    and salt['file.get_mode']('/usr/bin/i3') == '0755'
+    and salt['file.get_hash']('/usr/bin/i3', 'sha256')
+        == official_i3_digest.value %}
 
 {% set user_i3_config = desktop_home ~ '/.config/i3/config' %}
 {% set user_rofi_theme = desktop_home ~ '/.config/rofi/config.rasi' %}
@@ -38,10 +64,16 @@
 {% set user_gtk4_settings = desktop_home ~ '/.config/gtk-4.0/settings.ini' %}
 {% set lightdm_config = '/etc/lightdm/lightdm.conf.d/91-qubes-hud.conf' %}
 {% set xsession_file = '/usr/share/xsessions/qubes-hud.desktop' %}
-{% set hud_binary = '/usr/local/libexec/qubes-hud/i3' %}
-{% set hud_binary_owner = '/usr/local/libexec/qubes-hud/i3.owner' %}
+{% set legacy_i3_binary = '/usr/local/libexec/qubes-hud/i3' %}
+{% set legacy_i3_owner = '/usr/local/libexec/qubes-hud/i3.owner' %}
 {% set keyboard_helper = '/usr/local/libexec/qubes-hud/apply-keyboard-layout' %}
 {% set hud_autostart_helper = '/usr/local/libexec/qubes-hud/hud-xdg-autostart' %}
+{% set glow_helper = '/usr/local/libexec/qubes-hud/hud-glow' %}
+{% set glow_pixels = '/usr/local/libexec/qubes-hud/glow_pixels.py' %}
+{% set bindings_helper = '/usr/local/libexec/qubes-hud/hud-bindings' %}
+{% set bindings_keyboard = '/usr/local/libexec/qubes-hud/bindings_keyboard.py' %}
+{% set bindings_data = '/usr/local/libexec/qubes-hud/bindings.json' %}
+{% set bindings_desktop = '/usr/share/applications/qubes-hud-bindings.desktop' %}
 {% set picom_config = '/usr/local/libexec/qubes-hud/picom.conf' %}
 {% set window_shader = '/usr/local/libexec/qubes-hud/window-glass.glsl' %}
 {% set legacy_picom_config = '/etc/xdg/picom.conf' %}
@@ -76,10 +108,37 @@
 {% set legacy_picom_owned = owner_marker in legacy_picom_contents
     or hud_asset_marker in legacy_picom_contents %}
 
-{% set binary_owner_regular = salt['file.file_exists'](hud_binary_owner)
-    and not salt['file.is_link'](hud_binary_owner) %}
-{% set binary_owner_owned = owner_marker in salt['file.read'](hud_binary_owner)
-    if binary_owner_regular else false %}
+{# The retired executable is replaced only when its exact bytes and adjacent
+   record prove ownership. Either known record may accompany either known file
+   during an interrupted migration. Writing the new record first also makes a
+   partial first install, with only the record present, recoverable. #}
+{% set legacy_i3_lstat = salt['file.lstat'](legacy_i3_binary) %}
+{% set legacy_i3_exists = legacy_i3_lstat|length > 0 %}
+{% set legacy_i3_owner_lstat = salt['file.lstat'](legacy_i3_owner) %}
+{% set legacy_i3_owner_exists = legacy_i3_owner_lstat|length > 0 %}
+{% set legacy_i3_owner_regular = salt['file.file_exists'](legacy_i3_owner)
+    and not salt['file.is_link'](legacy_i3_owner) %}
+{% set legacy_i3_expected_record = '# ' ~ owner_marker ~ '.\n'
+    ~ 'target=' ~ legacy_i3_binary ~ '\n'
+    ~ 'sha256=' ~ legacy_i3_sha256 ~ '\n' %}
+{% set i3_compat_expected_record = '# ' ~ owner_marker ~ '.\n'
+    ~ 'target=' ~ legacy_i3_binary ~ '\n'
+    ~ 'sha256=' ~ i3_compat_sha256 ~ '\n' %}
+{% set legacy_i3_owner_owned = legacy_i3_owner_regular
+    and legacy_i3_owner_lstat.get('st_uid') == 0
+    and legacy_i3_owner_lstat.get('st_gid') == 0
+    and salt['file.get_mode'](legacy_i3_owner) == '0644'
+    and salt['file.read'](legacy_i3_owner) in [
+        legacy_i3_expected_record, i3_compat_expected_record] %}
+{% set legacy_i3_owned = legacy_i3_exists
+    and salt['file.file_exists'](legacy_i3_binary)
+    and not salt['file.is_link'](legacy_i3_binary)
+    and legacy_i3_lstat.get('st_uid') == 0
+    and legacy_i3_lstat.get('st_gid') == 0
+    and salt['file.get_mode'](legacy_i3_binary) == '0755'
+    and legacy_i3_owner_owned
+    and salt['file.get_hash'](legacy_i3_binary, 'sha256') in [
+        legacy_i3_sha256, i3_compat_sha256] %}
 {% set wallpaper_owner_regular = salt['file.file_exists'](hud_wallpaper_owner)
     and not salt['file.is_link'](hud_wallpaper_owner) %}
 {% set wallpaper_owner_owned = owner_marker in salt['file.read'](hud_wallpaper_owner)
@@ -184,9 +243,14 @@
     (user_gtk4_settings, [owner_marker, hud_asset_marker]),
     (lightdm_config, [owner_marker]),
     (xsession_file, [owner_marker]),
-    (hud_binary_owner, [owner_marker]),
     (keyboard_helper, [owner_marker]),
     (hud_autostart_helper, [owner_marker]),
+    (glow_helper, [hud_asset_marker]),
+    (glow_pixels, [hud_asset_marker]),
+    (bindings_helper, [hud_asset_marker]),
+    (bindings_keyboard, [hud_asset_marker]),
+    (bindings_data, [hud_asset_marker]),
+    (bindings_desktop, [hud_asset_marker]),
     (picom_config, [owner_marker, hud_asset_marker]),
     (window_shader, [hud_asset_marker]),
     (picom_package_owner, [owner_marker]),
@@ -202,6 +266,7 @@
     '/usr',
     '/usr/share',
     '/usr/share/icons',
+    '/usr/share/applications',
     cyan_icon_root,
     cyan_icon_backup,
     desktop_home,
@@ -230,6 +295,19 @@
     {% endif %}
   {% endfor %}
   {% if target_exists and (not target_regular or not target_owned.found) %}
+    {% set collision.found = true %}
+  {% endif %}
+{% endfor %}
+
+{% for path, expected_mode in [
+    (glow_helper, '0755'), (glow_pixels, '0644'),
+    (bindings_helper, '0755'), (bindings_keyboard, '0644'),
+    (bindings_data, '0644'), (bindings_desktop, '0644')
+] %}
+  {% set target_lstat = salt['file.lstat'](path) %}
+  {% if target_lstat|length > 0 and (
+      target_lstat.get('st_uid') != 0 or target_lstat.get('st_gid') != 0
+      or salt['file.get_mode'](path) != expected_mode) %}
     {% set collision.found = true %}
   {% endif %}
 {% endfor %}
@@ -272,7 +350,6 @@
 
 {# Binary assets use a regular, owner-marked adjacent text record. #}
 {% for target, owner_owned in [
-    (hud_binary, binary_owner_owned),
     (hud_wallpaper, wallpaper_owner_owned)
 ] %}
   {% set target_lstat = salt['file.lstat'](target) %}
@@ -283,6 +360,13 @@
     {% set collision.found = true %}
   {% endif %}
 {% endfor %}
+
+{% if legacy_i3_owner_exists and not legacy_i3_owner_owned %}
+  {% set collision.found = true %}
+{% endif %}
+{% if legacy_i3_exists and not legacy_i3_owned %}
+  {% set collision.found = true %}
+{% endif %}
 
 {% set unmanaged_collision = collision.found %}
 
@@ -306,12 +390,12 @@ qubes_gui_hud_invalid_transport:
   test.fail_without_changes:
     - name: The package transport must be auto, direct-dom0, or qubes-updatevm.
 
-{% elif installed_i3_evr != expected_i3_evr %}
-qubes_gui_hud_unsupported_i3_build:
+{% elif not official_i3_verified %}
+qubes_gui_hud_official_i3_required:
   test.fail_without_changes:
     - name: >-
-        Refusing to install the pinned HUD binary: installed i3 is
-        '{{ installed_i3_evr }}', expected exactly '{{ expected_i3_evr }}'.
+        Refusing to activate the HUD session without an intact, root-owned
+        /usr/bin/i3 matching the installed i3 RPM. Apply qubes_gui.i3 first.
 
 {% elif installed_i3_settings_evr != expected_i3_settings_evr %}
 qubes_gui_hud_unsupported_i3_settings_build:
@@ -320,13 +404,6 @@ qubes_gui_hud_unsupported_i3_settings_build:
         Refusing to install the HUD config: installed i3-settings-qubes is
         '{{ installed_i3_settings_evr }}', expected exactly
         '{{ expected_i3_settings_evr }}'.
-
-{% elif not binary_hash_ready %}
-qubes_gui_hud_binary_hash_not_pinned:
-  test.fail_without_changes:
-    - name: >-
-        Set i3_hud_sha256 in qubes_gui/hud/init.sls to the audited,
-        64-character files/i3-hud SHA-256 before applying this state.
 
 {% elif unmanaged_collision %}
 qubes_gui_hud_unmanaged_target_refused:
@@ -355,7 +432,7 @@ qubes_gui_hud_runtime_packages_qubes_updatevm:
     - refresh: true
 {% endif %}
 
-qubes_gui_hud_official_i3_fallback_present:
+qubes_gui_hud_official_i3_binary_present:
   cmd.run:
     - name: /usr/bin/test -x /usr/bin/i3
     - unless: /usr/bin/test -x /usr/bin/i3
@@ -456,6 +533,118 @@ qubes_gui_hud_window_shader:
     - require:
       - file: qubes_gui_hud_binary_directory
 
+qubes_gui_hud_glow_pixels:
+  file.managed:
+    - name: {{ glow_pixels }}
+    - source: salt://qubes_gui/hud/files/glow_pixels.py
+    - check_cmd: >-
+        /usr/bin/python3 -c 'import ast, sys;
+        ast.parse(open(sys.argv[1], encoding="utf-8").read(),
+        filename=sys.argv[1])'
+    - user: root
+    - group: root
+    - mode: '0644'
+    - require:
+      - file: qubes_gui_hud_binary_directory
+
+qubes_gui_hud_glow_helper:
+  file.managed:
+    - name: {{ glow_helper }}
+    - source: salt://qubes_gui/hud/files/hud-glow
+    - check_cmd: >-
+        /usr/bin/python3 -c 'import ast, sys;
+        ast.parse(open(sys.argv[1], encoding="utf-8").read(),
+        filename=sys.argv[1])'
+    - user: root
+    - group: root
+    - mode: '0755'
+    - require:
+      - file: qubes_gui_hud_binary_directory
+      - file: qubes_gui_hud_glow_pixels
+
+qubes_gui_hud_glow_runtime:
+  cmd.run:
+    - name: /usr/bin/python3 -B {{ glow_helper }} --check
+    - unless: /usr/bin/python3 -B {{ glow_helper }} --check
+    - require:
+      - file: qubes_gui_hud_glow_pixels
+      - file: qubes_gui_hud_glow_helper
+{% if transport == 'direct-dom0' %}
+      - cmd: qubes_gui_hud_runtime_packages_direct
+{% else %}
+      - pkg: qubes_gui_hud_runtime_packages_qubes_updatevm
+{% endif %}
+
+qubes_gui_hud_bindings_keyboard:
+  file.managed:
+    - name: {{ bindings_keyboard }}
+    - source: salt://qubes_gui/hud/files/bindings_keyboard.py
+    - check_cmd: >-
+        /usr/bin/python3 -c 'import ast, sys;
+        ast.parse(open(sys.argv[1], encoding="utf-8").read(),
+        filename=sys.argv[1])'
+    - user: root
+    - group: root
+    - mode: '0644'
+    - require:
+      - file: qubes_gui_hud_binary_directory
+
+qubes_gui_hud_bindings_helper:
+  file.managed:
+    - name: {{ bindings_helper }}
+    - source: salt://qubes_gui/hud/files/hud-bindings
+    - check_cmd: >-
+        /usr/bin/python3 -c 'import ast, sys;
+        ast.parse(open(sys.argv[1], encoding="utf-8").read(),
+        filename=sys.argv[1])'
+    - user: root
+    - group: root
+    - mode: '0755'
+    - require:
+      - file: qubes_gui_hud_binary_directory
+      - file: qubes_gui_hud_bindings_keyboard
+{% if transport == 'direct-dom0' %}
+      - cmd: qubes_gui_hud_runtime_packages_direct
+{% else %}
+      - pkg: qubes_gui_hud_runtime_packages_qubes_updatevm
+{% endif %}
+
+qubes_gui_hud_bindings_data:
+  file.managed:
+    - name: {{ bindings_data }}
+    - source: salt://qubes_gui/hud/files/bindings.json
+    - check_cmd: /usr/bin/python3 -B {{ bindings_helper }} --check --data
+    - user: root
+    - group: root
+    - mode: '0644'
+    - require:
+      - file: qubes_gui_hud_binary_directory
+      - file: qubes_gui_hud_bindings_helper
+
+qubes_gui_hud_bindings_runtime:
+  cmd.run:
+    - name: /usr/bin/python3 -B {{ bindings_helper }} --check
+    - unless: /usr/bin/python3 -B {{ bindings_helper }} --check
+    - require:
+      - file: qubes_gui_hud_bindings_keyboard
+      - file: qubes_gui_hud_bindings_helper
+      - file: qubes_gui_hud_bindings_data
+{% if transport == 'direct-dom0' %}
+      - cmd: qubes_gui_hud_runtime_packages_direct
+{% else %}
+      - pkg: qubes_gui_hud_runtime_packages_qubes_updatevm
+{% endif %}
+
+qubes_gui_hud_bindings_desktop:
+  file.managed:
+    - name: {{ bindings_desktop }}
+    - source: salt://qubes_gui/hud/files/qubes-hud-bindings.desktop
+    - user: root
+    - group: root
+    - mode: '0644'
+    - require:
+      - cmd: qubes_gui_hud_bindings_runtime
+
 qubes_gui_hud_picom_config:
   file.managed:
     - name: {{ picom_config }}
@@ -467,6 +656,7 @@ qubes_gui_hud_picom_config:
     - require:
       - file: qubes_gui_hud_binary_directory
       - file: qubes_gui_hud_window_shader
+      - cmd: qubes_gui_hud_glow_runtime
 {% if transport == 'direct-dom0' %}
       - cmd: qubes_gui_hud_runtime_packages_direct
 {% else %}
@@ -483,6 +673,8 @@ qubes_gui_hud_autostart_helper:
     - mode: '0755'
     - require:
       - file: qubes_gui_hud_picom_config
+      - cmd: qubes_gui_hud_glow_runtime
+      - cmd: qubes_gui_hud_bindings_runtime
 
 {% if legacy_picom_owned %}
 qubes_gui_hud_remove_owned_legacy_picom_config:
@@ -512,45 +704,6 @@ qubes_gui_hud_picom_package_owner:
       - pkg: qubes_gui_hud_runtime_packages_qubes_updatevm
 {% endif %}
 {% endif %}
-
-qubes_gui_hud_i3_binary:
-  file.managed:
-    - name: {{ hud_binary }}
-    - source: salt://qubes_gui/hud/files/i3-hud
-    - check_cmd: >-
-        /usr/bin/bash -c '/usr/bin/printf "%s  %s\n" "{{ i3_hud_sha256 }}"
-        "$1" | /usr/bin/sha256sum --check --status -' --
-    - user: root
-    - group: root
-    - mode: '0755'
-    - require:
-      - file: qubes_gui_hud_binary_directory
-      - cmd: qubes_gui_hud_official_i3_fallback_present
-
-qubes_gui_hud_i3_binary_owner:
-  file.managed:
-    - name: {{ hud_binary_owner }}
-    - contents: |
-        # {{ owner_marker }}.
-        target={{ hud_binary }}
-        sha256={{ i3_hud_sha256 }}
-    - user: root
-    - group: root
-    - mode: '0644'
-    - require:
-      - file: qubes_gui_hud_i3_binary
-
-qubes_gui_hud_i3_binary_checksum:
-  cmd.run:
-    - name: >-
-        /usr/bin/bash -c '/usr/bin/printf "%s  %s\n" "{{ i3_hud_sha256 }}"
-        "{{ hud_binary }}" | /usr/bin/sha256sum --check --status -'
-    - unless: >-
-        /usr/bin/bash -c '/usr/bin/printf "%s  %s\n" "{{ i3_hud_sha256 }}"
-        "{{ hud_binary }}" | /usr/bin/sha256sum --check --status -'
-    - require:
-      - file: qubes_gui_hud_i3_binary
-      - file: qubes_gui_hud_i3_binary_owner
 
 qubes_gui_hud_user_i3_directory:
   file.directory:
@@ -604,7 +757,7 @@ qubes_gui_hud_i3_config:
   file.managed:
     - name: {{ user_i3_config }}
     - source: salt://qubes_gui/hud/files/i3-config
-    - check_cmd: {{ hud_binary }} -C -c
+    - check_cmd: /usr/bin/i3 -C -c
     - user: {{ desktop_user }}
     - group: {{ desktop_group }}
     - mode: '0644'
@@ -613,7 +766,7 @@ qubes_gui_hud_i3_config:
       - file: qubes_gui_hud_user_i3_directory
       - file: qubes_gui_hud_keyboard_helper
       - file: qubes_gui_hud_autostart_helper
-      - cmd: qubes_gui_hud_i3_binary_checksum
+      - cmd: qubes_gui_hud_official_i3_binary_present
 
 qubes_gui_hud_rofi_theme:
   file.managed:
@@ -762,7 +915,7 @@ qubes_gui_hud_xsession:
     - group: root
     - mode: '0644'
     - require:
-      - cmd: qubes_gui_hud_i3_binary_checksum
+      - cmd: qubes_gui_hud_official_i3_binary_present
       - file: qubes_gui_hud_i3_config
       - file: qubes_gui_hud_rofi_theme
       - file: qubes_gui_hud_dunst_config
@@ -779,6 +932,37 @@ qubes_gui_hud_xsession:
       - file: qubes_gui_hud_autostart_helper
       - file: qubes_gui_hud_wallpaper
       - file: qubes_gui_hud_wallpaper_owner
+      - file: qubes_gui_hud_bindings_desktop
+
+{# Keep the old restart pathname, but replace the custom machine code with
+   an auditable launcher only after the official HUD session is installed.
+   The record is written first so interrupted first installs remain owned. #}
+qubes_gui_hud_i3_compat_owner:
+  file.managed:
+    - name: {{ legacy_i3_owner }}
+    - contents: |
+        # {{ owner_marker }}.
+        target={{ legacy_i3_binary }}
+        sha256={{ i3_compat_sha256 }}
+    - user: root
+    - group: root
+    - mode: '0644'
+    - require:
+      - file: qubes_gui_hud_xsession
+
+qubes_gui_hud_i3_compat_launcher:
+  file.managed:
+    - name: {{ legacy_i3_binary }}
+    - source: salt://qubes_gui/hud/files/i3-official-compat
+    - check_cmd: >-
+        /usr/bin/bash -c '/usr/bin/printf "%s  %s\n" "{{ i3_compat_sha256 }}"
+        "$1" | /usr/bin/sha256sum --check --status -' --
+    - user: root
+    - group: root
+    - mode: '0755'
+    - require:
+      - file: qubes_gui_hud_i3_compat_owner
+      - cmd: qubes_gui_hud_official_i3_session_present
 
 qubes_gui_hud_lightdm_selection:
   file.managed:

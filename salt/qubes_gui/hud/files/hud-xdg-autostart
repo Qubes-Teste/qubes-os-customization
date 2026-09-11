@@ -103,11 +103,16 @@ xdg_autostart() {
 if /usr/bin/picom \
     --config /usr/local/libexec/qubes-hud/picom.conf \
     --daemon; then
-    log 'Started Qubes HUD Picom compositor.'
+    /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-glow &
+    log 'Started Qubes HUD Picom compositor and rounded glow helper.'
 else
     printf '%s\n' \
         'Qubes HUD: Picom failed to start; continuing desktop autostart.' >&2
 fi
+
+# This normal dom0 application is assigned to workspace 1 by the HUD config.
+# A repeated startup invocation must not take focus from the current workspace.
+/usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-bindings --background &
 
 xdg_autostart "${XDG_CONFIG_DIRS-/etc/xdg}"
 xdg_autostart "${XDG_CONFIG_HOME-$HOME/.config}"

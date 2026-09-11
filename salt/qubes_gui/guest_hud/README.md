@@ -36,7 +36,7 @@ disks, devices, and updates receive thin cyan aliases. Targeted regular
 NetworkManager wired, disconnected, Wi-Fi signal, and secure status files use
 cyan glyphs on exact-black canvases for reliable XEmbed rendering.
 
-The outer Qubes frame, rounded clipping, trusted label line, transparency,
+The outer Qubes frame, rounded clipping, label-colored window title, transparency,
 blur, and glow remain in dom0. Installing a compositor or window manager in a
 TemplateVM would not improve seamless guest windows and is intentionally out
 of scope. Browser page content, Electron interfaces, and applications that

@@ -1,0 +1,4 @@
+#!/usr/bin/bash
+# Qubes HUD managed file. Owner: salt/qubes_gui/hud.
+# Preserve restart from an older HUD session while using official packaged i3.
+exec /usr/bin/i3 "$@"

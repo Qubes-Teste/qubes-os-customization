@@ -1,0 +1,257 @@
+{
+  "_owner": "Qubes HUD managed file. Owner: salt/qubes_gui/hud.",
+  "subtitle": "Super = Windows key · reference only",
+  "sections": [
+    {
+      "title": "Launch",
+      "entries": [
+        {
+          "keys": "Super + Enter",
+          "description": "Terminal in the focused qube; dom0 when a dom0 window is focused",
+          "keys_template": "Super + {k36}"
+        },
+        {
+          "keys": "Ctrl + Alt + T",
+          "description": "Always open a dom0 terminal",
+          "keys_template": "Ctrl + Alt + {k28}"
+        },
+        {
+          "keys": "Super + Shift + Enter",
+          "description": "Console of the focused qube; local terminal in dom0",
+          "keys_template": "Super + Shift + {k36}"
+        },
+        {
+          "keys": "Super + D",
+          "description": "HUD application launcher",
+          "keys_template": "Super + {k40}"
+        },
+        {
+          "keys": "Super + Shift + D",
+          "description": "Qubes application menu",
+          "keys_template": "Super + Shift + {k40}"
+        }
+      ]
+    },
+    {
+      "title": "Workspaces",
+      "entries": [
+        {
+          "keys": "Super + 1 … 9, 0",
+          "description": "Switch to workspace 1 … 9, 10",
+          "keys_template": "Super + {k10} … {k18}, {k19}"
+        },
+        {
+          "keys": "Super + Shift + 1 … 9, 0",
+          "description": "Move the focused window or container to that workspace",
+          "keys_template": "Super + Shift + {k10} … {k18}, {k19}"
+        },
+        {
+          "keys": "Super + Tab",
+          "description": "Next workspace"
+        },
+        {
+          "keys": "Super + Shift + Tab",
+          "description": "Previous workspace"
+        },
+        {
+          "keys": "Same workspace shortcut again",
+          "description": "Return to the previously selected workspace"
+        }
+      ]
+    },
+    {
+      "title": "Focus and move",
+      "entries": [
+        {
+          "keys": "Super + ← ↓ ↑ →",
+          "description": "Focus the adjacent window",
+          "keys_template": "Super + {k113} {k116} {k111} {k114}"
+        },
+        {
+          "keys": "Super + J K L Ö",
+          "description": "Alternative focus keys: left / down / up / right",
+          "keys_template": "Super + {k44} {k45} {k46} {k47}"
+        },
+        {
+          "keys": "Super + Shift + ← ↓ ↑ →",
+          "description": "Move the focused window in that direction",
+          "keys_template": "Super + Shift + {k113} {k116} {k111} {k114}"
+        },
+        {
+          "keys": "Super + Shift + J K L Ö",
+          "description": "Alternative move keys: left / down / up / right",
+          "keys_template": "Super + Shift + {k44} {k45} {k46} {k47}"
+        },
+        {
+          "keys": "Super + A",
+          "description": "Focus the parent container",
+          "keys_template": "Super + {k38}"
+        },
+        {
+          "keys": "Super + Space",
+          "description": "Focus the floating or tiled layer",
+          "keys_template": "Super + {k65}"
+        },
+        {
+          "keys": "Alt + F4  /  Super + Shift + Q",
+          "description": "Close the focused window",
+          "keys_template": "Alt + F4  /  Super + Shift + {k24}"
+        }
+      ]
+    },
+    {
+      "title": "Layout",
+      "entries": [
+        {
+          "keys": "Super + H",
+          "description": "Split horizontally for the next window",
+          "keys_template": "Super + {k43}"
+        },
+        {
+          "keys": "Super + V",
+          "description": "Split vertically for the next window",
+          "keys_template": "Super + {k55}"
+        },
+        {
+          "keys": "Super + E",
+          "description": "Toggle horizontal / vertical split",
+          "keys_template": "Super + {k26}"
+        },
+        {
+          "keys": "Super + S",
+          "description": "Stacking layout",
+          "keys_template": "Super + {k39}"
+        },
+        {
+          "keys": "Super + W",
+          "description": "Tabbed layout",
+          "keys_template": "Super + {k25}"
+        },
+        {
+          "keys": "Super + F",
+          "description": "Toggle fullscreen",
+          "keys_template": "Super + {k41}"
+        },
+        {
+          "keys": "Super + Shift + Space",
+          "description": "Toggle floating / tiled",
+          "keys_template": "Super + Shift + {k65}"
+        },
+        {
+          "keys": "Super + Shift + -",
+          "description": "Move the focused window to the scratchpad",
+          "keys_template": "Super + Shift + {s_minus}"
+        },
+        {
+          "keys": "Super + -",
+          "description": "Show the next scratchpad window, or hide the focused one",
+          "keys_template": "Super + {s_minus}"
+        }
+      ]
+    },
+    {
+      "title": "Resize mode",
+      "entries": [
+        {
+          "keys": "Super + R",
+          "description": "Enter resize mode",
+          "keys_template": "Super + {k27}"
+        },
+        {
+          "keys": "← / J   ·   → / Ö",
+          "description": "Shrink / grow width while in resize mode",
+          "keys_template": "{k113} / {k44}   ·   {k114} / {k47}"
+        },
+        {
+          "keys": "↑ / L   ·   ↓ / K",
+          "description": "Shrink / grow height while in resize mode",
+          "keys_template": "{k111} / {k46}   ·   {k116} / {k45}"
+        },
+        {
+          "keys": "Enter / Escape / Super + R",
+          "description": "Leave resize mode",
+          "keys_template": "{k36} / {k9} / Super + {k27}"
+        }
+      ]
+    },
+    {
+      "title": "Qubes clipboard",
+      "entries": [
+        {
+          "keys": "Ctrl + C",
+          "description": "First copy inside the source application (application-dependent)"
+        },
+        {
+          "keys": "Ctrl + Shift + C",
+          "description": "Copy the source qube clipboard into the Qubes clipboard"
+        },
+        {
+          "keys": "Ctrl + Shift + V",
+          "description": "Transfer the Qubes clipboard to the focused destination qube"
+        },
+        {
+          "keys": "Ctrl + V",
+          "description": "Then paste inside the destination application (application-dependent)"
+        },
+        {
+          "keys": "Ctrl + Insert / Shift + Insert",
+          "description": "Local terminal copy / paste where supported; separate from Qubes transfer"
+        }
+      ]
+    },
+    {
+      "title": "Session and sound",
+      "entries": [
+        {
+          "keys": "Super + Shift + O",
+          "description": "Lock the screen",
+          "keys_template": "Super + Shift + {k32}"
+        },
+        {
+          "keys": "Super + Shift + C",
+          "description": "Reload i3 configuration",
+          "keys_template": "Super + Shift + {k54}"
+        },
+        {
+          "keys": "Super + Shift + R",
+          "description": "Restart i3 in place",
+          "keys_template": "Super + Shift + {k27}"
+        },
+        {
+          "keys": "Super + Shift + E",
+          "description": "Show the logout confirmation",
+          "keys_template": "Super + Shift + {k26}"
+        },
+        {
+          "keys": "Volume up / down",
+          "description": "Adjust volume by 10%"
+        },
+        {
+          "keys": "Mute / Microphone mute",
+          "description": "Toggle output / microphone mute"
+        }
+      ]
+    },
+    {
+      "title": "Mouse combinations",
+      "entries": [
+        {
+          "keys": "Drag a tiled title bar",
+          "description": "Rearrange tiles; drop near an edge to choose position"
+        },
+        {
+          "keys": "Super + drag",
+          "description": "Move a window by dragging within it"
+        },
+        {
+          "keys": "Shift + title-bar drag",
+          "description": "Drop in another tile’s center to swap the two windows"
+        },
+        {
+          "keys": "Drag a shared tile border",
+          "description": "Resize neighboring tiles"
+        }
+      ]
+    }
+  ]
+}

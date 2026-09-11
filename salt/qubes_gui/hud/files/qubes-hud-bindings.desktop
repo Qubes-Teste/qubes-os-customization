@@ -1,0 +1,12 @@
+# Qubes HUD managed file. Owner: salt/qubes_gui/hud.
+[Desktop Entry]
+Type=Application
+Name=HUD Bindings
+Comment=Search Qubes HUD shortcuts for the active English or German keyboard
+Exec=/usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-bindings
+TryExec=/usr/local/libexec/qubes-hud/hud-bindings
+Icon=input-keyboard
+Terminal=false
+Categories=Utility;Documentation;
+OnlyShowIn=i3;I3;
+StartupWMClass=QubesHudBindings

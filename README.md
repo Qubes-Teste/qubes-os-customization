@@ -35,9 +35,8 @@ a locally modified stale file is preserved and makes the sync stop.
 Deployment uses only files in this repository and software supplied by the
 configured Qubes repositories. Dom0 remains offline: missing signed RPMs are
 obtained through its UpdateVM. The Python management helpers use only the
-Python standard library already present in Qubes dom0; Salt installs no pip
-modules and does not run the networked maintainer rebuild under
-`source/i3-hud/`.
+Python standard library already present in Qubes dom0. Deployment does not
+install pip modules, compile software, or distribute a customized i3 binary.
 
 Render and dry-run it before applying:
 
@@ -88,8 +87,8 @@ keys are shown in `salt/pillar.example.sls`. The package transport defaults to
 
 The `qubes_gui.hud` state adds the black/cyan shell shown by the visual
 references under `style_guide/`. It installs an exactly black background,
-30-pixel top bar, 32-pixel inner gaps, 16-pixel rounded frames with a
-maximum-intensity 48-pixel cyan glow, a translucent Rofi launcher, translucent
+30-pixel top bar, 32-pixel inner gaps, 12-pixel rounded frames with a
+34-pixel cyan glow with evenly lit corners, a translucent Rofi launcher, translucent
 Dunst notifications, and glossy dom0 GTK chrome. On the current 598-mm-wide
 reference display, the gap is approximately 10 mm; its physical size varies
 with display DPI. The dom0 HUD state deliberately does not style AppVM
@@ -139,28 +138,45 @@ In the HUD session, `Ctrl+Alt+T` always opens an `xfce4-terminal` in dom0. The
 standard Windows-logo-key plus Enter binding remains context-sensitive and
 opens a terminal in the currently focused qube.
 
-Qubes label colors remain visible as thin horizontal lines in normal window
-decorations. Each line starts just after the rendered title, fades from nearly
-transparent there to full label intensity at the right, carries a restrained
-same-color halo, and automatically resizes with the window. A compact close
-button in the same trusted Qubes label color has a dedicated region at the far
-right; the label line and its glow stop before that region and cannot overlap
-it. Click the button or press `Alt+F4` to close a window. The label line and
-close button are painted by a pinned, hardened i3 binary in dom0 from
-gui-daemon's trusted label-color property. Both are part of i3's trusted
-decoration; AppVM content cannot paint or reposition either control. Picom
-intentionally composites each non-fullscreen window, including its Qubes frame
-and label line, at 30%
-transparency (70% opacity) with background blur, an external cyan halo, and an
-edge-weighted inner rim that fades toward the center. Fullscreen windows remain
-opaque. The packaged
-`/usr/bin/i3`, its login session, and Xfce all remain available as fallbacks.
+The HUD uses the official Qubes-packaged `/usr/bin/i3`. Qubes label colors
+appear in the complete window title, including its trusted `[qube-name]`
+descriptor, while the frame stays on the black/cyan palette. For example,
+`[sys-firewall] user - Thunar` is green for a green-labeled qube. Gray and
+black labels use readable light and medium gray text against the dark
+titlebar; dom0 uses white. The packaged renderer does not support coloring
+only the descriptor separately from the application title.
+
+The old custom label line and close button are retired. Use `Alt+F4` to close
+a window. Picom intentionally composites each non-fullscreen window,
+including its Qubes frame and title, at 30%
+transparency (70% opacity) with background blur and an edge-weighted inner rim
+that fades toward the center. A small Python helper draws the external cyan
+halo with equal brightness at equal distances from rounded and straight edges.
+Fullscreen windows remain opaque. Both i3 and Picom use official packages;
+the helper needs no build or additional packages. The standard i3 login session
+and Xfce remain available.
 
 At HUD startup, the keyboard helper first restores the desktop user's saved
 Xfce layout, variant, model, and keyboard options and otherwise falls back to
 the machine's complete system X11 tuple. No language is hardcoded in the
 portable state, so this machine uses its saved German layout while another
 machine keeps its own configured layout.
+
+HUD login also opens **HUD Bindings**, a normal framed dom0 reference window,
+on workspace 1. Its searchable cards show 45 Qubes/i3 shortcuts, with the
+headline and key combinations in highlight cyan. The key legends follow the
+active English (US/UK) or German keyboard, including layout/group changes
+while the window is open. The reference fills an otherwise empty workspace;
+as normal windows open there it takes a quarter of the horizontal allocation.
+The remaining layout uses normal i3 tiling. It can be reopened from the HUD
+application launcher by searching for `HUD Bindings`.
+
+The reference is readable Python source using dom0's existing standard library
+and stock GTK3/GLib/X11 libraries. It adds no package, Python module or compiled
+binary. Salt installs and validates the scripts/data, supplies the launcher
+and startup rules, and removes owned files on rollback. Applying Salt does
+not move current windows or reload i3; the startup placement takes effect at
+the next HUD login.
 
 On another Qubes 4.3 machine, apply the base state first and then the HUD:
 
@@ -174,24 +190,24 @@ sudo qubesctl state.sls qubes_gui.hud saltenv=user
 
 The second HUD apply should report zero changes. Log out and choose
 **Qubes HUD (i3)**; the state never restarts the active desktop or LightDM.
-A fresh login is also required after custom-binary updates; an i3 config reload
-alone does not activate them.
+For upgrades from the retired custom i3, Salt replaces the verified legacy
+binary with a small shell launcher that executes `/usr/bin/i3` and forwards
+all arguments. This preserves the running session's restart path. A normal
+logout/login activates the official build; after a successful apply, a
+deliberate `i3-msg restart` can also migrate the existing session in place.
+The state validates the official executable against its installed RPM and
+checks the candidate config with `/usr/bin/i3 -C`.
+See `salt/qubes_gui/hud/README.md` for ownership checks and platform support.
 
-The custom binary is accepted only on the exact audited Qubes/Fedora i3 base
-and is verified by SHA-256 before use. Its complete source patches, pinned input
-hashes, build recipe, license, and reproducibility notes are under
-`source/i3-hud/`. See `salt/qubes_gui/hud/README.md` for collision handling and
-the exact platform pins.
-
-To return to packaged i3:
+To remove the HUD and return to the standard i3 session:
 
 ```sh
 sudo qubesctl state.sls qubes_gui.hud.rollback saltenv=user test=True
 sudo qubesctl state.sls qubes_gui.hud.rollback saltenv=user
 ```
 
-Real user-triggered fullscreen has no window-manager decoration and therefore
-no label line or close button. Qubes' default gui-daemon policy rejects
+Real user-triggered fullscreen has no window-manager titlebar.
+Qubes' default gui-daemon policy rejects
 untrusted AppVM fullscreen requests; override-redirect windows keep
 gui-daemon's protected label border.
 

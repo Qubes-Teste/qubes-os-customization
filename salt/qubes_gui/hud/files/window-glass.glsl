@@ -13,6 +13,9 @@ vec4 default_post_processing(vec4 c);
 vec4 window_shader() {
     vec2 texsize = vec2(textureSize(tex, 0));
     vec4 source = texture2D(tex, texcoord / texsize, 0);
+    // Picom synthesizes the curved border from the original texture's edge
+    // color. Do that before lighting, or it paints an unlit arc over the rim.
+    source = default_post_processing(source);
 
     vec2 window_size = max(effective_size, vec2(1.0));
     vec2 position = clamp(texcoord, vec2(0.0), window_size);
@@ -30,8 +33,8 @@ vec4 window_shader() {
     float distance_to_edge = max(-signed_distance, 0.0);
     float rim = 1.0 - smoothstep(0.0, 30.0, distance_to_edge);
 
-    // X11 window textures use premultiplied alpha. Work in straight RGB,
-    // then premultiply again without changing the window's source alpha.
+    // Picom's result uses premultiplied alpha. Work in straight RGB, then
+    // premultiply again, retaining its opacity and antialiased corner coverage.
     float source_alpha = source.a;
     vec3 straight_rgb = source_alpha > 0.00001
         ? clamp(source.rgb / source_alpha, 0.0, 1.0)
@@ -45,26 +48,19 @@ vec4 window_shader() {
     float chroma = highest_channel - lowest_channel;
     float color_guard = 1.0 - smoothstep(0.18, 0.45, chroma);
 
-    // Protect the trusted line's intense right cap even for gray/black labels.
-    // GLX texture orientation can vary. The derivative identifies which
-    // texture edge maps to the physical top, avoiding a mirrored bottom mask.
+    // Preserve title ink, including neutral labels and low-chroma purple.
+    // The packaged i3 renders the whole title in its configured label color;
+    // only the dark titlebar background should receive the cyan rim.
+    // GLX texture orientation can vary; the derivative identifies the top.
     // i3's side border tracks its logical-pixel scale.
     float hud_scale = clamp(border_width / 3.0, 1.0, 2.5);
     float top_distance = texcoord_dy >= 0.0
         ? position.y
         : window_size.y - position.y;
-    float right_distance = window_size.x - position.x;
-    float label_cap_x = 1.0 - smoothstep(48.0 * hud_scale,
-                                        56.0 * hud_scale, right_distance);
-    // The old badge used the whole top-right corner. The new cue is only a
-    // nine-logical-pixel stroke, so constrain the neutral-color guard to that
-    // horizontal band. This keeps the cyan rim continuous above and below it.
-    float label_band_in = smoothstep(4.0 * hud_scale,
-                                     6.0 * hud_scale, top_distance);
-    float label_band_out = 1.0 - smoothstep(14.0 * hud_scale,
-                                           16.0 * hud_scale, top_distance);
-    float label_line_band = label_band_in * label_band_out;
-    float trusted_label_guard = 1.0 - label_cap_x * label_line_band;
+    float title_band = 1.0 - smoothstep(22.0 * hud_scale,
+                                       26.0 * hud_scale, top_distance);
+    float title_ink = smoothstep(0.12, 0.25, highest_channel);
+    float trusted_label_guard = 1.0 - title_band * title_ink;
 
     float strength = 0.36 * rim * color_guard * trusted_label_guard;
     vec3 cyan = vec3(0.098039, 0.827451, 1.0); // #19d3ff
@@ -72,6 +68,6 @@ vec4 window_shader() {
                          (1.0 - cyan * strength);
     source.rgb = lit_rgb * source_alpha;
 
-    // Retain Picom's configured opacity, inversion, brightness, and corners.
-    return default_post_processing(source);
+    // Keep the processed alpha; do not repaint the rounded border a second time.
+    return source;
 }
