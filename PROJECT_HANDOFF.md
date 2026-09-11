@@ -10,9 +10,9 @@ documentation remains authoritative for individual states and commands:
 - `salt/qubes_gui/guest_hud/README.md`
 
 Always verify the current worktree and history. The prior published baseline is
-`dec2ba1` (`Add shared dom0 and Xen HUD log panes`), which includes
-the accepted official i3/glow changes, HUD Bindings and host-log Salt integration,
-and these project instructions. The latest integration and validation are recorded at
+`3e0bd29` (`Add Manager and read-only monitors to the dom0 workspace`),
+which includes the accepted official i3/glow changes, HUD Bindings, host logs,
+Manager and the terminal layout, and these project instructions. The latest integration and validation are recorded at
 the end of this document.
 
 ## Goal and non-negotiable constraints
@@ -1302,3 +1302,93 @@ Live integration completed using the installed source:
 The same complete workspace starts on workspace 1 at the next HUD login.
 Publication uses the previously authorized GitHub SSH transport through
 sys-net, with strict host verification and no direct dom0 network route.
+
+
+## Read-only terminal log panes (2026-09-11)
+
+The user changed the two right-side dom0/Xen log panes to read-only terminals
+and explicitly requested copying from every read-only terminal. All five now
+use `hud_monitor.build`: the same VTE widget, cyan terminal palette/font,
+disabled input/paste/drop handling, selection and Ctrl+Shift+C copying. The
+three top-row monitors already supported copying and retain their existing
+fixed commands and wide horizontally scrollable canvas. The two log panes
+wrap at their actual window width and expose VTE's native vertical scrollback
+adjustment directly through GtkScrolledWindow. Their window classes, roles,
+titles and layout positions are unchanged.
+
+The original `LogFeed` reader and source allowlists are unchanged, including
+unprivileged journal/file access, rotation/truncation/new-file handling,
+source limits and bounded per-poll/line work. Logs do not spawn a terminal
+shell or a PTY command: the existing reader feeds the shared VTE display.
+`log_bytes()` applies the reader's existing literal-text sanitizer to each
+LF-delimited line before supplying trusted CR/LF separators. ESC, C0/C1,
+OSC/CSI, clipboard/title controls and bidi characters are visibly escaped;
+raw log bytes cannot send commands to VTE. Source/error status stays in the
+small literal GTK footer. Native VTE keeps 600 scrollback rows plus the
+visible screen, replacing the old GtkTextView's separate 600-line/256KiB
+buffer cap. Soft wraps count as terminal rows, so retained original records
+vary with width. This is short recent history, not an archive.
+
+The separate GtkTextView builder, its manual pruning/scroll code, CSS and
+unused ctypes structures/bindings were removed from `hud-bindings`. This
+reduces the total shared GUI/terminal source. There are no new assets,
+packages, compiled binaries, Python modules or elevated permissions. Existing
+Salt requisites install both reader/terminal modules before GUI validation
+and remove them after the GUI on rollback; no Salt-state or startup/layout
+change is required. Default native Salt renders still contain 51 init and
+43 rollback states, with install/refresh/remove resolving to
+`qubes_dom0_update`. All deployment entrypoints remain unchanged and no
+network/build/dependency path was introduced. Evidence for the default render
+is `/tmp/hud-log-terminals-installed-salt-render.json`.
+
+
+Validation for the terminal conversion used only installed tooling:
+
+- All 47 repository tests pass. Five new terminal tests cover literal control
+  escaping, OSC52/title/screen sequences, Unicode/surrogates, no log PTY spawn,
+  reader cleanup and invalid mode refusal. Runtime and whitespace checks pass.
+- All five modes passed actual mouse selection and Ctrl+Shift+C copying in
+  the shared frontend with official i3 on a private X display. q/Ctrl+C,
+  direct VTE feed/paste APIs, clipboard/primary paste, Ctrl+Shift+V and middle
+  click could not control monitors or alter the synthetic log buffer; GTK
+  reports no drop destinations. Normal close reaped each monitor child and
+  closed each log reader. No real log contents or live clipboard were used.
+  Evidence: `/tmp/qubes-hud-five-terminal-test/summary.json`.
+- Both log modes passed native tail-follow/resume and actual visible-line
+  preservation while paused through pruning (the same line stayed visible
+  as 400, 500 and 700 source lines accumulated). Scrollback and oversized
+  wrapped feeds remained bounded. Native readback showed terminal-control
+  payloads literally, without changing clipboard/title/screen state. Evidence:
+  `/tmp/qubes-hud-terminal-log-test/history-results.json`.
+- The shared GUI plus terminal module now totals 643 lines (406 + 237), down
+  from 736 (531 + 205). All private test displays and their owned children
+  were stopped. Startup, workspace layout and existing monitor commands are
+  unchanged.
+
+
+Deployment and live activation completed:
+
+- Final formula sync/dry-run/apply passed all 51 states, changing only
+  `hud-bindings` and `hud_monitor.py`. Repeat apply passed with zero changes;
+  rollback dry-run passed all 43 states. Both installed sources and the
+  unchanged reader/workspace helper match the repository and expected
+  root ownership/modes. Evidence: `/tmp/qubes-hud-log-terminals-deploy/`.
+- A private test of the exact replacement procedure verified all eight
+  rectangles, six retained app identities, workspace 1 and focus, including
+  focus on a log being replaced. The live procedure then replaced only the
+  two verified log clients with the installed shared helper, using temporary
+  exact-class/role placeholders. All eight frame/client rectangles, the six
+  other XIDs/PIDs, the completed layout group and workspace 1 were preserved;
+  previous focus was restored. No i3/compositor/qube restart or reload occurred.
+- Live dom0 is now PID813493/XID88080387; Xen is PID813520/XID90177539. Both
+  run as uid1000, load stock VTE and emit no application errors. The old log
+  processes exited. Dom0 owns only its expected journalctl child; Xen has
+  no child command. Existing top/xentop/cgtop processes remain running with
+  their already-enabled Ctrl+Shift+C behavior. Log history reloads from the
+  existing bounded reader tails; the previous GTK text buffers are retired.
+- Live evidence is `/tmp/qubes-hud-log-terminals-deploy/live/validation.json`;
+  temporary replacement evidence is
+  `/tmp/qubes-hud-terminal-log-test/replacement-results.json`. Temporary
+  activation/test scripts and private log content are not deployment assets
+  and are not committed. Future workspace-1 startup uses the new terminals
+  through the same existing Salt-managed helpers and launchers.

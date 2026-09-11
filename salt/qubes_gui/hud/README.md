@@ -128,7 +128,7 @@ The lock is a checked, owner-only file in the session's `XDG_RUNTIME_DIR`.
 Bindings, both log panes and all three read-only monitors share `hud-bindings`
 for their GTK window, styling, focus and instance handling. `bindings_keyboard.py`
 and `bindings.json` supply the reference; `hud_logs.py` supplies both log streams and `hud_monitor.py` supplies
-the three native VTE monitor terminals. `hud-workspace` prepares the layout and
+all five native VTE log/monitor terminals. `hud-workspace` prepares the layout and
 launches the fixed applications. These files live under
 `/usr/local/libexec/qubes-hud/`, with three launchers under
 `/usr/share/applications/qubes-hud-*.desktop`. All are root-owned,
@@ -147,8 +147,9 @@ and login behavior apply at the next HUD login/reboot.
 
 ## Live dom0 and Xen logs
 
-**HUD Dom0 Logs** and **HUD Xen Logs** are normal framed, focusable dom0 windows
-using the same cyan styling as HUD Bindings. Open either from the application
+**HUD Dom0 Logs** and **HUD Xen Logs** are normal framed, focusable dom0
+read-only terminals using the same cyan palette and font as the three system
+monitors. Open either from the application
 launcher or use the shared command with `--view dom0` or `--view xen`.
 Closing a pane closes its readers; reopening starts with a small recent tail.
 
@@ -173,11 +174,14 @@ and accessible service-journal messages are still included. Other missing or
 inaccessible sources and a stopped journal process are also reported. Journalctl exposes only records permitted to the current user; tighter
 permissions can reduce coverage. The reader never changes those permissions.
 
-Each pane keeps at most 600 recent lines and 262144 characters in memory;
-older text expires. Scroll up to read recent history; scroll to the bottom to
-follow again. Lines wrap, text is selectable and read-only, and no terminal
-escapes or markup are executed. Control/bidi characters are visibly escaped,
-long lines and per-update work are capped. File readers handle truncation,
+Each pane keeps 600 terminal scrollback rows plus the visible screen; older
+text expires. Scroll up to read recent history; scroll to the bottom to
+follow again. Lines wrap to the pane width. Select text and press
+**Ctrl+Shift+C** to copy, including across wrapped lines. Input, paste and
+text drops are disabled. Logs cannot issue terminal commands: their control
+and bidi characters are visibly escaped before entering VTE, including OSC
+clipboard/title sequences. Only the viewer supplies CR/LF line breaks.
+Long lines and per-update work are capped. File readers handle truncation,
 replacement and newly created matching files, with at most 256 files and
 4096 directory entries scanned. Reaching a source limit is visible in the
 footer. No log copy is written to disk and no full archive is loaded.
@@ -202,11 +206,13 @@ show Xen domain usage and dom0 cgroup usage respectively. Cgroup metrics depend
 on accounting already enabled by the system; the HUD does not enable any.
 All commands run with the desktop user's existing permissions.
 
-The three monitor panes use the stock VTE terminal widget with input disabled
-before spawning their fixed command. Typing, terminal paste and text drops
+All five read-only panes share the stock VTE terminal widget and copying/input
+policy. The three monitors spawn their fixed commands with input already
+disabled; the log panes receive sanitized text from their existing readers
+and have no PTY command. Typing, terminal paste and text drops
 are disabled; selection, scrolling, focus and Ctrl+Shift+C copying remain.
 Hyperlinks, sixel graphics and audible bells are disabled. The palette uses
-cyan shades and retains 200 scrollback lines. There is no shell behind a
+cyan shades; monitors retain 200 scrollback rows and logs retain 600. There is no shell behind a
 monitor and no shell fallback after it exits. Normal close terminates and
 reaps its child. The first terminal and Qubes Manager remain interactive.
 

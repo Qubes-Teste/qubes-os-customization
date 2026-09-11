@@ -169,18 +169,19 @@ active English (US/UK) or German keyboard, including layout/group changes
 while the window is open. Bindings sits left of a central block with four
 terminals above Qubes Manager. The first terminal is interactive; the others
 show read-only `top`, `xentop` and `systemd-cgtop`. Two full-height panes at
-the right show **HUD Dom0 Logs** and **HUD Xen Logs**. They combine
-local host-service streams and the hypervisor console respectively, without
-reading guest logs. Each retains up to 600 recent lines and pauses following
-while you scroll back. Bindings and both log panes can also be reopened from
-the HUD app launcher.
+the right show **HUD Dom0 Logs** and **HUD Xen Logs** in read-only terminals.
+They combine local host-service streams and the hypervisor console respectively, without
+reading guest logs. Each retains 600 scrollback rows plus its visible screen
+and pauses following while you scroll back. All five read-only terminals
+support text selection and **Ctrl+Shift+C** copying. Bindings and both log panes
+can also be reopened from the HUD app launcher.
 
 The reference, logs and read-only monitors share readable Python source using
 dom0's existing standard library and stock GTK3/GLib/X11/VTE libraries. It adds
 no package, Python module or compiled binary. Salt installs and validates the
 scripts/data, supplies the launcher and startup rules, and removes owned files
-on rollback. Applying Salt does
-not move current windows or reload i3; the startup placement takes effect at
+on rollback. Applying Salt does not move current windows or reload i3;
+the startup placement takes effect at
 the next HUD login.
 
 On another Qubes 4.3 machine, apply the base state first and then the HUD:

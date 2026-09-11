@@ -1,10 +1,12 @@
 # Qubes HUD managed file. Owner: salt/qubes_gui/hud.
-"""Fixed, read-only system monitors in the stock GTK3 VTE widget."""
+"""Shared read-only log and system-monitor terminals using stock GTK3 VTE."""
 import ctypes as C
 import functools
 import os
 import signal
 import time
+
+from hud_logs import LogFeed, _plain
 
 
 P, I, U, S = C.c_void_p, C.c_int, C.c_uint, C.c_char_p
@@ -67,6 +69,7 @@ def _libraries():
 def check():
     """Validate installed libraries and fixed commands, without running them."""
     _libraries()
+    LogFeed.check()
     for command in COMMANDS.values():
         if not os.path.isfile(command[0]) or not os.access(command[0], os.X_OK):
             raise RuntimeError("Missing stock monitor: " + command[0])
@@ -76,18 +79,28 @@ def _cyan(scale=1.0):
     return RGBA(25 / 255 * scale, 211 / 255 * scale, scale, 1.0)
 
 
+def log_bytes(text):
+    """Only our own CR/LF can reach VTE as controls; logs stay literal text."""
+    return '\r\n'.join(_plain(line) for line in text.split('\n')).encode('utf-8')
+
+
 def build(app, body, view, callbacks):
     """Return (focus widget, tick interval, tick, cleanup) for the shared window."""
-    command = COMMANDS[view]  # No argv, shell, links or commands supplied by users.
+    command = COMMANDS.get(view)  # No user-supplied argv, shell or paths.
+    if command is None and view not in ('dom0', 'xen'):
+        raise ValueError('Unknown terminal view')
     check()
     vte, gtk, pango, glib, gobject = _libraries()
     terminal = vte.vte_terminal_new()
     scroll = app.gtk.gtk_scrolled_window_new(None, None)
     app.gtk.gtk_scrolled_window_set_policy(scroll, 1, 1)  # Automatic in both axes.
-    viewport = gtk.gtk_viewport_new(None, None)
-    gtk.gtk_widget_set_size_request(terminal, 1280, -1)  # Pan wide native tables.
-    app.gtk.gtk_container_add(viewport, terminal)
-    app.gtk.gtk_container_add(scroll, viewport)
+    if command:
+        viewport = gtk.gtk_viewport_new(None, None)
+        gtk.gtk_widget_set_size_request(terminal, 1280, -1)  # Pan wide native tables.
+        app.gtk.gtk_container_add(viewport, terminal)
+        app.gtk.gtk_container_add(scroll, viewport)
+    else:
+        app.gtk.gtk_container_add(scroll, terminal)  # Wrap logs to the pane width.
     app.pack(body, scroll, True)
     vte.vte_terminal_set_input_enabled(terminal, 0)
     gtk.gtk_drag_dest_unset(terminal)
@@ -97,7 +110,7 @@ def build(app, body, view, callbacks):
     vte.vte_terminal_set_audible_bell(terminal, 0)
     vte.vte_terminal_set_scroll_on_output(terminal, 0)
     vte.vte_terminal_set_scroll_on_keystroke(terminal, 0)
-    vte.vte_terminal_set_scrollback_lines(terminal, 200)
+    vte.vte_terminal_set_scrollback_lines(terminal, 200 if command else 600)
     font = pango.pango_font_description_from_string(b"Noto Sans Mono 8")
     vte.vte_terminal_set_font(terminal, font)
     pango.pango_font_description_free(font)
@@ -132,6 +145,25 @@ def build(app, body, view, callbacks):
             vte.vte_terminal_feed(terminal, encoded, len(encoded))
 
     attach(b"key-press-event", C.CFUNCTYPE(I, P, P, P), key_press)
+
+    if command is None:
+        footer = app.pack(body, app.label('', 'footer'))
+        feed = LogFeed(view)
+
+        def update_log(_data):
+            try:
+                addition = feed.poll()
+                if addition:
+                    encoded = log_bytes(addition)
+                    vte.vte_terminal_feed(terminal, encoded, len(encoded))
+                status = feed.status
+            except (OSError, ValueError, RuntimeError) as error:
+                status = 'Log reader: ' + _plain(str(error)[:300])
+            app.gtk.gtk_label_set_text(footer, status.encode())
+            return 1
+
+        return terminal, 250, update_log, feed.close
+
     attach(b"child-exited", C.CFUNCTYPE(None, P, I, P), child_exited)
 
     def tick(_data):
