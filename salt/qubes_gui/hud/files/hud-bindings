@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # Qubes HUD managed file. Owner: salt/qubes_gui/hud.
-"""Keyboard-aware HUD reference using the stock GTK3 and X11 libraries."""
+"""HUD reference and read-only native-command views using stock GTK3/VTE."""
 import argparse
 import ctypes as C
 import fcntl
@@ -15,6 +15,7 @@ import sys
 import time
 
 from bindings_keyboard import KeyboardLayout
+import hud_terminal
 
 
 P, I, U, S = C.c_void_p, C.c_int, C.c_uint, C.c_char_p
@@ -164,7 +165,14 @@ def load_data(path):
     return data
 
 
-VIEWS = {"bindings": ("HUD Bindings", "QubesHudBindings")}
+VIEWS = {
+    "bindings": ("HUD Bindings", "QubesHudBindings"),
+    "dom0": ("HUD Dom0 Logs", "QubesHudDom0Logs"),
+    "xen": ("HUD Xen Logs", "QubesHudXenLogs"),
+    "top": ("HUD top", "QubesHudTop"),
+    "xentop": ("HUD xentop", "QubesHudXentop"),
+    "cgtop": ("HUD systemd-cgtop", "QubesHudCgtop"),
+}
 
 
 def acquire_instance(background, view="bindings"):
@@ -220,7 +228,8 @@ def main():
     data = load_data(args.data)
     if args.check:
         KeyboardLayout(check_only=True).close()
-        print('HUD data and stock GTK3/GLib/X11 symbols verified')
+        hud_terminal.check()
+        print('HUD data, native commands and stock GTK3/VTE/GLib/X11 symbols verified')
         return
     if not gtk.gtk_init_check(None, None):
         raise RuntimeError("GTK could not open the selected display")
@@ -330,14 +339,19 @@ def run_window(data, *, present=False, view="bindings"):
     gtk.gtk_window_set_role(window, role)
     gtk.gtk_window_set_decorated(window, 1)
     gtk.gtk_window_set_default_size(window, 520, 900)
-    body = box(spacing=15)
-    gtk.gtk_container_set_border_width(body, 20)
+    terminal = view != "bindings"
+    body = box(spacing=0 if terminal else 15)
+    gtk.gtk_container_set_border_width(body, 4 if terminal else 20)
     gtk.gtk_container_add(window, body)
     callbacks = []  # Keep every C callback alive until gtk_main returns.
-    header = pack(body, box(spacing=6))
-    pack(header, label(title, "heading"))
-    subtitle = pack(header, label("", "subtitle"))
-    focus, interval, tick, cleanup = build_bindings(body, subtitle, data, callbacks)
+    if terminal:
+        focus, interval, tick, cleanup = hud_terminal.build(sys.modules[__name__], body, view, callbacks)
+        tick = TIMER_CALLBACK(tick)
+    else:
+        header = pack(body, box(spacing=6))
+        pack(header, label(title, "heading"))
+        subtitle = pack(header, label("", "subtitle"))
+        focus, interval, tick, cleanup = build_bindings(body, subtitle, data, callbacks)
 
     @CALLBACK
     def close_window(_widget, _data):

@@ -68,6 +68,7 @@
 {% set bindings_keyboard = '/usr/local/libexec/qubes-hud/bindings_keyboard.py' %}
 {% set logs_module = '/usr/local/libexec/qubes-hud/hud_logs.py' %}
 {% set monitor_module = '/usr/local/libexec/qubes-hud/hud_monitor.py' %}
+{% set terminal_module = '/usr/local/libexec/qubes-hud/hud_terminal.py' %}
 {% set workspace_helper = '/usr/local/libexec/qubes-hud/hud-workspace' %}
 {% set bindings_data = '/usr/local/libexec/qubes-hud/bindings.json' %}
 {% set bindings_desktop = '/usr/share/applications/qubes-hud-bindings.desktop' %}
@@ -286,6 +287,7 @@
     (bindings_keyboard, [hud_asset_marker]),
     (logs_module, [hud_asset_marker]),
     (monitor_module, [hud_asset_marker]),
+    (terminal_module, [hud_asset_marker]),
     (workspace_helper, [hud_asset_marker]),
     (bindings_data, [hud_asset_marker]),
     (bindings_desktop, [hud_asset_marker]),
@@ -400,7 +402,7 @@
   {% endif %}
 {% endfor %}
 
-{% for path in terminal_text_targets + [logs_module, monitor_module] %}
+{% for path in terminal_text_targets + [logs_module, monitor_module, terminal_module] %}
   {% set target_lstat = salt['file.lstat'](path) %}
   {% if target_lstat|length > 0 and (
       target_lstat.get('st_uid') != 0 or target_lstat.get('st_gid') != 0
@@ -784,6 +786,15 @@ qubes_gui_hud_rollback_remove_bindings_helper:
       - file: qubes_gui_hud_rollback_remove_dom0_logs_desktop
       - file: qubes_gui_hud_rollback_remove_xen_logs_desktop
       - file: qubes_gui_hud_rollback_remove_workspace_helper
+{% for view in ['top', 'xentop', 'cgtop'] %}
+      - file: qubes_gui_hud_rollback_remove_{{ view }}_desktop
+{% endfor %}
+
+qubes_gui_hud_rollback_remove_terminal_module:
+  file.absent:
+    - name: {{ terminal_module }}
+    - require:
+      - file: qubes_gui_hud_rollback_remove_bindings_helper
 
 qubes_gui_hud_rollback_remove_monitor_module:
   file.absent:

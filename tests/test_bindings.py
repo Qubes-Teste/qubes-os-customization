@@ -41,7 +41,8 @@ def load_module(name, path):
 
 def load_application():
     keyboard = load_module('test_bindings_keyboard', FILES / 'bindings_keyboard.py')
-    with mock.patch.dict('sys.modules', {'bindings_keyboard': keyboard}), \
+    terminal = load_module('test_hud_terminal_backend', FILES / 'hud_terminal.py')
+    with mock.patch.dict('sys.modules', {'bindings_keyboard': keyboard, 'hud_terminal': terminal}), \
             mock.patch.object(ctypes, 'CDLL', side_effect=lambda *_: SymbolLibrary()):
         return load_module('test_hud_bindings', FILES / 'hud-bindings')
 
@@ -70,7 +71,8 @@ class RuntimeChecks(unittest.TestCase):
 
     def test_missing_gtk_symbol_is_rejected_during_runtime_binding(self):
         keyboard = load_module('test_bindings_keyboard_missing', FILES / 'bindings_keyboard.py')
-        with mock.patch.dict('sys.modules', {'bindings_keyboard': keyboard}), \
+        terminal = load_module('test_hud_terminal_backend_missing', FILES / 'hud_terminal.py')
+        with mock.patch.dict('sys.modules', {'bindings_keyboard': keyboard, 'hud_terminal': terminal}), \
                 mock.patch.object(ctypes, 'CDLL', return_value=SymbolLibrary('gtk_main')):
             with self.assertRaises(AttributeError):
                 load_module('test_missing_gtk_app', FILES / 'hud-bindings')

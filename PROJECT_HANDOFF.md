@@ -10,7 +10,7 @@ documentation remains authoritative for individual states and commands:
 - `salt/qubes_gui/guest_hud/README.md`
 
 Always verify the current worktree and history. The prior published baseline is
-`a049bff` (`Use shared read-only terminals for dom0 and Xen logs`),
+`b9b2614` (`Replace custom HUD terminals with stock programs`),
 which includes the accepted official i3/glow changes, HUD Bindings, host logs,
 Manager and the terminal layout, and these project instructions. The latest integration and validation are recorded at
 the end of this document.
@@ -84,6 +84,10 @@ machine:
     programs configured by Salt; rsyslog replaces the custom log reader.
     Earlier VTE/reader sections below are historical, superseded by the final
     native-terminal section.
+13. The user then reported an empty Xen pane, pointer freezing during selection
+    and missing two-axis scrollbars. The stock Xterm view is superseded by the
+    shared GTK/VTE viewer described in the final section, retaining native log
+    readers and the preference to minimize custom code.
 
 ## Repository and deployment architecture
 
@@ -1569,3 +1573,157 @@ no new direct-network path, build, binary, package or language dependency.
 The unchanged explicit maintainer direct-dom0 override remains opt-in.
 The 32 custom-code tests and final whitespace checks passed. No further desktop
 restart is required to evaluate these panes on workspace 2.
+
+
+## Scrollable terminal viewers and recent Xen output (2026-09-12)
+
+The user reported three problems with the native Xterm trial: HUD Xen Logs
+was empty, selecting text appeared to freeze the mouse until button release,
+and there were no vertical/horizontal sliders for reading the monitor tables.
+This section supersedes the preceding Xterm-viewer behavior. The general
+preference for less non-Salt code remains: the replacement shares the existing
+HUD frontend and a small VTE body, while the custom Python log reader stays
+removed. No custom binary, source build or additional package is introduced.
+
+### Diagnosis and chosen behavior
+
+Read-only inspection found the Xen reader alive as uid1000, with its source
+FD at EOF18244. The file's last modification was September6 at10:09CEST; it
+had received no new output after the native follow-only viewer opened.
+Nothing was written to the Xen log to test the viewer. A short recent tail
+now avoids a blank view when the hypervisor is quiet.
+
+The installed Xterm397 and Xfce Terminal1.1.4 expose vertical scrollbars only.
+Xfce's per-tab read-only mode also has no documented startup switch. Neither
+supplies the requested horizontal viewport/slider through configuration.
+The final Xterm input resources, stock resources, focused/unfocused windows
+and a narrow real xentop all passed isolated held-button pointer-motion
+checks, including official Picom plus hud-glow. The reported freeze was not
+reproduced: do not claim a proven Xterm/XAllowEvents root cause or a verified
+fix for every live Xorg/input-driver condition. The replacement returns to
+the GTK/VTE selection behavior, with dedicated drag/copy checks.
+
+`hud-bindings` again supplies the shared window, classes/roles, styling and
+instance handling for all six HUD views. New `hud_terminal.py` supplies only
+the shared terminal body and fixed native-command lifecycle. The former
+`hud_logs.py` and `hud_monitor.py` stay retired. Monitors run the same native
+top, xentop and systemd-cgtop commands; dom0 logging retains its unprivileged
+rsyslog configuration and source filters. The stock Xfce interactive terminal,
+official Manager, Bindings and eight-pane layout remain in place.
+
+All five read-only viewers have visible bottom and right scrollbars. Monitor
+canvases are at least1280px wide and960px tall: their sliders pan the current
+live table, not historical top snapshots. The native program still controls
+which rows it displays in that terminal canvas. Monitor scrollback is disabled.
+Logs have a1280px wide canvas sized to visible height and600rows of native
+history. Their right scrollbar is explicitly bound to VTE's vertical history
+adjustment, outside the horizontal viewport so it remains visible while
+panning. A plain GtkViewport vertical adjustment would pan content rather
+than expose VTE history, so these two cases intentionally differ.
+
+VTE input is disabled before spawning; drag-and-drop input is unset. Selection,
+Ctrl+Shift+C and Ctrl+Insert copying, focus and both scrollbars remain enabled.
+Font8 and the cyan palette remain local to the viewer. Native log escaping
+prevents control sequences from being interpreted as terminal commands.
+There is no interactive shell fallback. Normal close uses the existing
+pidfd/GPid cleanup and native VTE child watch; TERM gets up to2seconds so dom0
+rsyslog can save its156offset records (previously measured~929ms), followed
+by a bounded KILL fallback. No Python callback executes after fork.
+
+### Xen native reader and safety limits
+
+Xen uses a fixed stock Bash pipeline: `tail -c65536 -F` on the hypervisor log,
+then `LC_ALL=C cat -vT`. It displays up to64KiB of existing data, which can
+begin partway through a record, and follows new bytes, replacement and
+truncation. A trusted banner explains the recent-output/following behavior.
+Xen's original recorded timestamps remain; the extra rsyslog timestamp/source
+prefix and cursor state are removed. Each launch loads the recent tail.
+
+The pipeline is a fixed literal, without user-supplied commands or paths.
+Bash uses noprofile/norc and `-p` to ignore startup environment hooks/imported
+functions; this does not change its uid. Both tail and cat start through
+stock setpriv parent-death signaling so even a quiet reader terminates after
+its shell exits. All programs remain the unprivileged desktop user.
+Native cat escapes every byte except printable ASCII and LF, including tabs,
+ESC, C1, malformed encodings, Unicode/bidi and terminal commands. It streams
+bounded buffers, with no new per-line limit; VTE retains bounded history.
+Dom0 retains its2KiB record/512FD/direct-queue policy. Both native followers
+still follow matching symlinks; the old custom no-follow guarantee is not
+restored. No guest sources, permissions, ACLs, groups or system logger settings
+are changed, and no copied log archive is written.
+
+Salt installs and validates the new root0644 VTE body before the frontend,
+checks native programs/libraries and the dom0 configuration, and supplies
+five shared desktop launchers retaining native flock. The checked shared
+frontend also retains per-view instance locks. It removes the owned legacy
+Xterm resource and Xen rsyslog configuration only after replacements validate.
+User-tmpfiles now creates only the dom0 cursor directory and five native
+locks; an existing Xen cursor directory is guarded and left until normal
+runtime cleanup. Rollback removes launchers/frontend before the module and
+leaves running applications/runtime state untouched. No i3 config or layout
+algorithm change is needed because existing class/instance matching accepts
+the GTK panes. Future startup remains workspace1; live migration targets2.
+
+### Validation and integration
+
+Native Xen fixtures verified the exact64KiB initial bound, immediate partial
+records, append/rename/recreate/truncate behavior, all256byte values, and
+termination of both children after shell TERM or KILL. A separate proof
+confirmed uid1000 throughout and ignored BASH_ENV/exported functions.
+Evidence: `/tmp/qubes-hud-xen-64k-_7mthksw/results.json` and
+`/tmp/qubes-hud-bash-p-proof-h90kfrwm/results.json`. Xterm pointer investigations
+are under `/tmp/qubes-hud-xterm-pointer-test/`; no live pointer/clipboard or
+real log contents were used in those tests. The repository's37unit tests
+pass, including display-free runtime and terminal input/spawn boundaries.
+All five final viewers passed private official-i3 tests: actual held-button
+pointer motion, short text selection and Ctrl+Shift+C, input/paste/API/drop
+blocking, native slider dragging, and normal child cleanup. Monitor canvases
+provided213columns/59rows at1280x960. Both log panes kept their right history
+bar visible while panning horizontally, preserved the visible line across
+append/pruning and resumed following at the bottom. Xentop redraws can erase
+an active selection when they change the selected text; no pause feature or
+monitor-control code was added. This is separate from pointer movement.
+Evidence: `/tmp/qubes-hud-vte-scroll-test/summary.json` (module hashd6a4f482,
+frontend989dee28). All private displays/processes were stopped.
+
+Installed default Salt renders passed61apply/51rollback states, with
+install/refresh/remove all resolving to qubes_dom0_update.269migration,
+ownership and dependency-order fixtures passed. Native desktop loading,
+UID1001rendering and user-tmpfiles checks passed, preserving active lock
+inodes and existing legacy Xen runtime data. Evidence:
+`/tmp/hud-scrollable-terminals-{installed-salt-render,salt-fixtures,native-validation}.json`.
+The tested reverse migration retained all eight outer frames, protected three
+client identities/interiors, workspace1 and focus on a replaced Xen pane.
+It captured and verified each old Xterm/native-child/flock tree and waited
+for all old processes to exit before launching its successor. GTK client
+interiors are2px wider/taller than Xterm due to native border accounting;
+outer geometry is identical. Evidence:
+`/tmp/qubes-hud-scrollbars-deploy/replacement-results.json`. All private
+migration processes/displays were stopped.
+
+Live formula sync, default dry-run and apply passed61states. Ten changes
+installed the238-line shared body, restored frontend dispatch, updated the
+five desktop entries/tmpfiles, and removed the old Xterm resource/Xen config.
+All installed source bytes, owners/modes and retired-file absence were
+verified. Repeat apply passed61states with zero changes; rollback dry-run
+passed51states, with no rollback executed. Final audit scanned61deployment
+files and found no new package, external module, build, compiled artifact or
+default direct-network request. The opt-in maintainer direct-DNF branch is
+unchanged.37repository tests and whitespace checks passed.
+
+The final reviewed runner replaced the five live Xterms on workspace2.
+All eight outer rectangles, Bindings/interactive-terminal/Manager processes
+and client interiors, workspace1 signature and prior Code-window focus are
+unchanged. Live GTK PIDs are top898507, xentop898537, cgtop898567,
+dom0898600 and xen898632. All native children run as uid1000, launcher logs
+are empty, and every replaced Xterm/flock/native child exited. Xen's native
+tail and cat each emitted18244bytes from the existing quiet hypervisor log;
+only counters were inspected, without saving log content. Dom0 has its expected
+rsyslog child; Xen has only Bash/tail/cat. The Bindings window remains its
+existing process and uses the updated common frontend at its next launch.
+No i3, compositor, screen lock, display manager or qube was restarted/reloaded.
+Future startup still targets workspace1. Evidence is under
+`/tmp/qubes-hud-scrollbars-deploy/`, including live-validation.json.
+The physical pointer symptom remains for user verification; isolated pointer
+motion and copying passed on the replacement. Native monitor redraws can
+still erase text selection, as documented above.

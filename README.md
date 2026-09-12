@@ -176,20 +176,21 @@ and pauses following while you scroll back. All five read-only terminals
 support text selection and **Ctrl+Shift+C** copying. All panes can be reopened
 from the HUD app launcher. Use **Super+F** to read wide monitor tables.
 
-The five read-only panes use stock Xterm and native monitor programs; stock
-rsyslog combines the logs. Salt supplies shared terminal settings, desktop
-launchers and two small logger configurations, with no custom Python terminal
-or log reader. These programs are supplied by the supported Qubes desktop;
-no packages or custom binaries are added. Logs initially follow new records,
-so the Xen pane can remain empty until an event occurs. Non-ASCII log bytes
-are visibly escaped; see the [log-reader details](salt/qubes_gui/hud/README.md#live-dom0-and-xen-logs).
+The five read-only panes share a small GTK/VTE viewer with visible horizontal
+and vertical scrollbars. Wide, tall monitor canvases let you pan through the
+live tables; log panes retain short terminal history. The viewer reuses the
+Bindings window code and runs native programs: rsyslog combines dom0 logs,
+while tail and cat show the latest 64 KiB of the Xen console and follow new
+events. No custom log reader, package or compiled binary is added. Control
+and non-ASCII log bytes appear as visible escapes; see the
+[log-reader details](salt/qubes_gui/hud/README.md#live-dom0-and-xen-logs).
 
-The keyboard-aware Bindings reference and guarded workspace startup still
-use small Python helpers with the existing system interpreter and libraries.
+The keyboard-aware reference, shared terminal viewer and guarded layout
+startup use the existing system Python and desktop libraries. A small viewer
+is necessary because the installed stock terminals lack horizontal scrolling.
 Salt installs and validates the assets and removes owned files on rollback.
-Applying Salt does not move current windows or reload i3;
-the startup placement takes effect at
-the next HUD login.
+Applying Salt does not move current windows or reload i3; startup placement
+takes effect at the next HUD login.
 
 On another Qubes 4.3 machine, apply the base state first and then the HUD:
 
