@@ -10,7 +10,7 @@ documentation remains authoritative for individual states and commands:
 - `salt/qubes_gui/guest_hud/README.md`
 
 Always verify the current worktree and history. The prior published baseline is
-`b9b2614` (`Replace custom HUD terminals with stock programs`),
+`bb8c68f` (`Restore HUD scrollbars and show recent Xen output`),
 which includes the accepted official i3/glow changes, HUD Bindings, host logs,
 Manager and the terminal layout, and these project instructions. The latest integration and validation are recorded at
 the end of this document.
@@ -1727,3 +1727,90 @@ Future startup still targets workspace1. Evidence is under
 The physical pointer symptom remains for user verification; isolated pointer
 motion and copying passed on the replacement. Native monitor redraws can
 still erase text selection, as documented above.
+
+## Cyan scrollbar separators (2026-09-12)
+
+The shared GTK viewer inherited pale Adwaita separator borders on its bottom
+and right scrollbars, plus a gray background and border image at the monitor
+pane's bottom-right scrollbar junction. The existing `hud-bindings` CSS now
+sets those separator borders to dim cyan `#116b86` and the junction to black
+without its border image. These rules are scoped to `.shortcut-window` and
+change no widget dimensions, terminal behavior or dependencies.
+
+Private native GTK rendering isolated the painted pixels: 448 monitor
+separator pixels and 219 log separator pixels changed from gray to dim cyan;
+the monitor's remaining 24 gray junction pixels became black. No other client
+pixels or widget rectangles changed. Normal, hover, active, disabled and
+backdrop checks found no remaining pale neutral pixels in either body type.
+Evidence: `/tmp/qubes-hud-scrollbar-css-test/verified.json`.
+
+GTK retained cached user CSS after file replacement and native theme
+notifications. The live update therefore uses the reviewed temporary
+GTK-to-GTK replacement runner for the five read-only panes. Its private test
+preserved all eight outer/client rectangles, the other three client identities,
+workspace 1 and focus, and verified old native children and locks exited
+before launching replacements. No runtime reload watcher was added.
+
+## Five default workspace buttons (2026-09-12)
+
+The HUD bar now uses official i3bar's `workspace_command` protocol, introduced
+in i3 4.23 and available in the installed official 4.25.1 package. Buttons 1–5
+remain visible even when their native workspaces do not exist. Selecting one
+creates a normal i3 workspace; empty, hidden workspaces are still removed by
+i3. Future startup continues to place only the HUD dashboard on workspace 1,
+without starting windows on 2–5 or relocating the current workspace 2 preview.
+This is not a blanket restriction on where other dom0 applications may open.
+
+The existing `hud-workspace` gains a small, separate `--buttons` mode. It merges
+missing numbered buttons with real `get_workspaces` results, preserving actual
+IDs, names, focus, visibility, urgency, outputs and workspaces outside 1–5.
+Missing buttons contain only name/number and use i3bar's primary-output fallback.
+An official `i3-msg` subscriber delivers workspace/output changes; its initial
+tick establishes subscription before the first snapshot, so startup cannot
+miss a change. There is no periodic polling, layout mutation, extra executable
+asset, package or custom binary. The layout-startup mode and display-free
+`--check` behavior remain intact. SIGTERM, closed-bar writes and subscriber EOF
+clean up the owned child. Existing Qubes status/tray programs are unchanged.
+
+Static config alone cannot retain accurate focus/urgency for absent buttons.
+A one-shot JSON command is also unsuitable: i3bar replaces the buttons with an
+error when its provider exits, including success status. The shared helper is
+therefore the bounded custom-code addition required for the requested behavior.
+
+### Integration and live activation
+
+The exact frontend CSS (SHA-256 `39a5dc10...`) passed native parsing and rendered
+identically to the pixel-verified candidate in all five style states for both
+body types. Evidence: `/tmp/qubes-hud-scrollbar-css-test/repo-verified.json`.
+The workspace addition adds 55 net source lines to the existing helper (248 total).
+All 43 repository tests passed, including six workspace state/lifecycle checks;
+display-free validation and official i3 config validation also passed.
+
+Private official i3/i3bar tests showed buttons 1–5 without creating workspaces,
+native click-to-create empty workspace 5, its removal on leaving, retained
+focus/urgency, named and additional workspaces, and correct real assignments
+across two outputs. Missing buttons also displayed with no explicit primary
+output. The exact captured live-to-installed config reload preserved both
+workspace trees, all eight HUD clients, focus and the i3 process. Ordinary
+reload ran no startup command, including `exec_always`; the existing wallpaper
+comment saying otherwise is inaccurate. All private processes were stopped.
+Evidence: `/tmp/qubes-hud-workspace-buttons-test/{results,reload-results,native-cleanup}.json`.
+
+Formula sync, default dry-run and apply passed 61 states, changing only the
+shared frontend, workspace helper and saved i3 config. Installed bytes and
+ownership/modes match the repository. Repeat apply passed with zero changes;
+rollback dry-run passed 51 states, without executing rollback.
+The deployment audit covered all 61 deployment files, including 14 shebang
+entrypoints, with no new package, module, binary, build or default network
+path. Default install/refresh/remove still resolve to `qubes_dom0_update`.
+
+The five live read-only panes were refreshed before reloading i3. All eight
+outer/client rectangles, the three other client identities, workspace 1 and
+focus were preserved; launcher logs were empty and native readers resumed.
+Their new PIDs are top908227, xentop908257, cgtop908290, dom0908322 and xen908354.
+The guarded live i3 reload then enabled the five buttons while retaining the
+same i3/i3bar processes, both workspace trees, all client identities/geometry
+and focus. The bar's provider is PID908814 with native subscriber908815.
+The current HUD preview stays on workspace 2; future login starts it only on 1.
+Evidence: `/tmp/qubes-hud-cyan-scrollbars-deploy/`, especially
+`installed-validation.json`, `live-validation.json` and `reload-validation.json`.

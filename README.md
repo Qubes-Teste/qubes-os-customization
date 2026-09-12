@@ -176,6 +176,12 @@ and pauses following while you scroll back. All five read-only terminals
 support text selection and **Ctrl+Shift+C** copying. All panes can be reopened
 from the HUD app launcher. Use **Super+F** to read wide monitor tables.
 
+The bar always offers workspace buttons **1–5**, with the dom0 dashboard on 1
+at login and no apps launched on 2–5. Empty workspaces are created when selected;
+additional and named workspaces retain their normal buttons and status. This
+uses official i3bar's workspace protocol (i3 4.23+) and an event-driven mode of
+the existing helper, with no extra packages or compiled code.
+
 The five read-only panes share a small GTK/VTE viewer with visible horizontal
 and vertical scrollbars. Wide, tall monitor canvases let you pan through the
 live tables; log panes retain short terminal history. The viewer reuses the

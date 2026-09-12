@@ -101,8 +101,10 @@ CSS = b"""
 menu, menuitem, menuitem label, tooltip, tooltip label { color: #28c0e3; }
 menuitem:hover label { color: #19d3ff; }
 menuitem:disabled label { color: #267f99; }
-.shortcut-window scrollbar { background: #000000; }
+.shortcut-window scrollbar { background: #000000; border-color: #116b86; }
 .shortcut-window scrollbar slider { background: #17576a; min-width: 5px; }
+.shortcut-window scrolledwindow junction { background-color: #000000;
+    border-image-source: none; }
 .shortcut-window .footer { color: #2999b5; font-size: 8pt; }
 """
 

@@ -1,14 +1,16 @@
 #!/usr/bin/python3
 # Qubes HUD managed file. Owner: salt/qubes_gui/hud.
-"""Open the HUD workspace once, without rearranging unrelated applications."""
+"""Open the HUD layout once, or supply native i3bar workspace buttons."""
 import argparse
 import fcntl
 import json
 import os
 from pathlib import Path
 import re
+import signal
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -79,10 +81,60 @@ def ipc(command, *, query=False):
     return result
 
 
+def workspace_buttons(workspaces):
+    """Preserve i3's real state; absent defaults are only clickable bar entries."""
+    result = list(workspaces)
+    present = {item['num'] for item in workspaces}
+    result.extend({'name': str(number), 'num': number}
+                  for number in range(1, 6) if number not in present)
+    # Numbered workspaces first; retain i3's order among named workspaces.
+    return sorted(result, key=lambda item: (item['num'] < 0, item['num']))
+
+
+def buttons():
+    def stop(signum, frame):
+        raise SystemExit(0)
+
+    handlers = {sig: signal.signal(sig, stop)
+                for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT)}
+    child = None
+    try:
+        # i3-msg hides the subscribe acknowledgement. The automatic first tick
+        # establishes subscription before the first query, so no change is lost.
+        child = subprocess.Popen(
+            ['/usr/bin/i3-msg', '-m', '-t', 'subscribe', '["workspace","output","tick"]'],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
+        for line in child.stdout:
+            event = json.loads(line)
+            if 'first' in event and not event['first']:
+                continue  # Other clients' ticks do not change workspace state.
+            data = workspace_buttons(ipc('get_workspaces', query=True))
+            print(json.dumps(data, separators=(',', ':')), flush=True)
+        raise RuntimeError('i3 workspace subscription ended')
+    except BrokenPipeError:
+        # Prevent interpreter shutdown from flushing again into a closed bar.
+        with open(os.devnull, 'w') as sink:
+            os.dup2(sink.fileno(), sys.stdout.fileno())
+    finally:
+        if child is not None:
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=1)
+            child.stdout.close()
+        for sig, handler in handlers.items():
+            signal.signal(sig, handler)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--workspace', type=int, choices=range(1, 11), default=1)
     parser.add_argument('--check', action='store_true')
+    parser.add_argument('--buttons', action='store_true',
+                        help='stream workspace buttons to i3bar (i3 4.23 or newer)')
     args = parser.parse_args()
     for program in {command[0] for command in commands().values()} | {'/usr/bin/i3-msg'}:
         if not Path(program).is_file() or not os.access(program, os.X_OK):
@@ -94,6 +146,9 @@ def main():
         raise RuntimeError('Invalid HUD workspace layout')
     if args.check:
         print('HUD workspace layout and stock launch commands verified')
+        return
+    if args.buttons:
+        buttons()
         return
     runtime = Path(os.environ.get('XDG_RUNTIME_DIR', '/run/user/' + str(os.getuid())))
     info = runtime.lstat()

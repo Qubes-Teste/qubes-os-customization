@@ -134,5 +134,94 @@ class LockChecks(unittest.TestCase):
                         app.main()
 
 
+class ButtonChecks(unittest.TestCase):
+    def test_button_mode_never_launches_layout_or_opens_runtime_lock(self):
+        with mock.patch('sys.argv', ['hud-workspace', '--buttons']), \
+                mock.patch.object(app, 'buttons') as stream, \
+                mock.patch.object(app, 'launch', side_effect=AssertionError('launched layout')), \
+                mock.patch.object(os, 'open', side_effect=AssertionError('opened lock')), \
+                mock.patch.object(Path, 'is_file', return_value=True), \
+                mock.patch.object(os, 'access', return_value=True):
+            app.main()
+        stream.assert_called_once_with()
+
+    def test_defaults_do_not_invent_windows_focus_urgency_or_output(self):
+        actual = [{'id': 91, 'name': '1: dom0', 'num': 1, 'output': 'DP-2',
+                   'focused': True, 'visible': True, 'urgent': False},
+                  {'id': 97, 'name': '7', 'num': 7, 'output': 'DP-1',
+                   'focused': False, 'visible': False, 'urgent': True},
+                  {'id': 98, 'name': '研究 "desk"', 'num': -1, 'output': 'DP-2'}]
+        result = app.workspace_buttons(actual)
+        self.assertEqual([item['name'] for item in result],
+                         ['1: dom0', '2', '3', '4', '5', '7', '研究 "desk"'])
+        self.assertEqual([item for item in result if 'id' in item], actual)
+        self.assertEqual(result[1:5], [{'name': str(n), 'num': n} for n in range(2, 6)])
+        self.assertEqual(len(actual), 3)
+
+    def test_empty_state_and_returned_default_workspace(self):
+        self.assertEqual(len(app.workspace_buttons([])), 5)
+        actual = {'id': 95, 'name': '5', 'num': 5, 'focused': True,
+                  'visible': True, 'urgent': False, 'output': 'DP-1'}
+        self.assertEqual(app.workspace_buttons([actual])[-1], actual)
+
+    def test_subscribe_precedes_query_and_later_ticks_are_ignored(self):
+        child = mock.Mock()
+        child.stdout = io.StringIO('{"first":true}\n{"first":false}\n{"change":"focus"}\n')
+        child.poll.return_value = None
+        order = []
+
+        def spawn(*args, **kwargs):
+            self.assertEqual(args[0][-1], '["workspace","output","tick"]')
+            order.append('subscribe')
+            return child
+
+        def query(command, *, query=False):
+            self.assertTrue(query)
+            self.assertEqual(command, 'get_workspaces')
+            order.append('snapshot')
+            return []
+
+        with mock.patch.object(app.subprocess, 'Popen', side_effect=spawn), \
+                mock.patch.object(app, 'ipc', side_effect=query), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            with self.assertRaisesRegex(RuntimeError, 'subscription ended'):
+                app.buttons()
+        self.assertEqual(order, ['subscribe', 'snapshot', 'snapshot'])
+        self.assertEqual(len(output.getvalue().splitlines()), 2)
+        child.terminate.assert_called_once()
+        child.wait.assert_called_once_with(timeout=1)
+        self.assertTrue(child.stdout.closed)
+
+    def test_signal_exception_reaps_subscriber_and_restores_handler(self):
+        child = mock.Mock()
+        child.stdout = io.StringIO('{"first":true}\n')
+        child.poll.return_value = None
+        handler = app.signal.getsignal(app.signal.SIGTERM)
+
+        def interrupted(*args, **kwargs):
+            app.signal.getsignal(app.signal.SIGTERM)(app.signal.SIGTERM, None)
+
+        with mock.patch.object(app.subprocess, 'Popen', return_value=child), \
+                mock.patch.object(app, 'ipc', side_effect=interrupted):
+            with self.assertRaises(SystemExit):
+                app.buttons()
+        child.terminate.assert_called_once()
+        child.wait.assert_called_once_with(timeout=1)
+        self.assertIs(app.signal.getsignal(app.signal.SIGTERM), handler)
+
+    def test_closed_bar_reaps_subscriber_and_discards_pending_flush(self):
+        child = mock.Mock()
+        child.stdout = io.StringIO('{"first":true}\n')
+        child.poll.return_value = None
+        with mock.patch.object(app.subprocess, 'Popen', return_value=child), \
+                mock.patch.object(app, 'ipc', return_value=[]), \
+                mock.patch('builtins.print', side_effect=BrokenPipeError), \
+                mock.patch.object(app.os, 'dup2') as discard:
+            app.buttons()
+        discard.assert_called_once()
+        child.terminate.assert_called_once()
+        child.wait.assert_called_once_with(timeout=1)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -268,6 +268,7 @@ bar {
         height 30
         tray_output primary
         status_command qubes-i3status
+        workspace_command exec /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-workspace --buttons
         font $font
 
         colors {

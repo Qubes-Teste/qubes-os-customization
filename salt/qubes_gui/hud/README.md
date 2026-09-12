@@ -247,7 +247,8 @@ User-tmpfiles creates private runtime directories and locks at login. Salt
 also prepares them for an already logged-in user; it neither starts a user
 session nor removes active runtime objects on rollback.
 
-`hud-workspace` embeds the layout and uses public i3 IPC, then exits. It launches
+In its default startup mode, `hud-workspace` embeds the layout, uses public i3
+IPC, then exits. It launches
 the official Manager with Qt's `-name qubes-hud-manager` instance argument;
 matching does not depend on its translated class/title. It creates a layout
 on an empty target or extends the previous three-pane HUD while retaining
@@ -264,6 +265,21 @@ workspace 2 using the same installed source:
 /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-workspace --workspace 2
 ```
 
+The bar always offers workspace buttons **1–5**. Official i3 removes empty
+workspaces when they are no longer visible; clicking a retained button creates
+that native workspace on demand. The HUD dashboard starts only on workspace 1;
+no applications or placeholder windows are launched on 2–5. Existing workspaces,
+including 6–10 and named workspaces, remain available with their real focus,
+visibility, urgency and output assignments.
+
+This uses the official i3bar `workspace_command` protocol, available in i3
+**4.23 or newer**. The existing helper's small `--buttons` mode listens to native
+`i3-msg` workspace/output events and adds missing buttons to i3's actual JSON.
+Absent buttons use i3bar's primary-output fallback. It does not poll, move
+windows or maintain empty workspaces. The initial tick event closes the
+subscription startup race; bar shutdown terminates and reaps the subscriber.
+Qubes status and tray handling remain with `qubes-i3status` and i3bar.
+
 Individual monitors can be reopened from the application launcher or with
 `gtk-launch qubes-hud-top`, `gtk-launch qubes-hud-xentop` and
 `gtk-launch qubes-hud-cgtop`. General HUD rollback removes owned launch/config
@@ -276,7 +292,8 @@ rsyslog configuration are removed only after their replacements validate.
 Application is refused unless all of these checks pass:
 
 - Qubes OS 4.3 dom0 on `x86_64`
-- the official Qubes `i3` package is installed, and `/usr/bin/i3` matches its
+- the official Qubes `i3` package is installed (4.23 or newer for the workspace
+  protocol), and `/usr/bin/i3` matches its
   installed RPM's file digest
 - `i3-settings-qubes` version-release exactly `1.14-1.fc41`
 
