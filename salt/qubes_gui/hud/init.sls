@@ -483,6 +483,21 @@
   {% set collision.found = true %}
 {% endif %}
 
+{# A default HUD install must not activate a foreign optional i3 include. #}
+{% set qube_include = '/etc/qubes-hud/qube-workspace.i3' %}
+{% set qube_include_stat = salt['file.lstat'](qube_include) %}
+{% if qube_include_stat %}
+  {% set parent = salt['file.lstat']('/etc/qubes-hud') %}
+  {% if not salt['file.file_exists'](qube_include) or salt['file.is_link'](qube_include)
+      or qube_include_stat.get('st_uid') != 0 or qube_include_stat.get('st_gid') != 0
+      or qube_include_stat.get('st_nlink') != 1 or salt['file.get_mode'](qube_include) != '0644'
+      or not salt['file.directory_exists']('/etc/qubes-hud') or salt['file.is_link']('/etc/qubes-hud')
+      or parent.get('st_uid') != 0 or parent.get('st_gid') != 0
+      or salt['file.get_mode']('/etc/qubes-hud') != '0755'
+      or 'Qubes HUD managed file. Owner: salt/qubes_gui/hud/qube.' not in salt['file.read'](qube_include) %}
+    {% set collision.found = true %}
+  {% endif %}
+{% endif %}
 {% set unmanaged_collision = collision.found %}
 
 {% if transport == 'auto' %}

@@ -3,9 +3,11 @@ import contextlib
 import importlib.machinery
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -27,7 +29,7 @@ def client(view, identity=10, **extra):
 
 
 def workspace(name, clients):
-    return {'id': int(name), 'type': 'workspace', 'name': str(name),
+    return {'id': int(name), 'type': 'workspace', 'name': str(name), 'num': int(name),
             'nodes': clients, 'floating_nodes': [], 'focused': False}
 
 
@@ -132,6 +134,118 @@ class LockChecks(unittest.TestCase):
                         mock.patch.object(app, 'ipc', side_effect=AssertionError('contacted i3')):
                     with self.assertRaises((OSError, RuntimeError)):
                         app.main()
+
+
+class QubeChecks(unittest.TestCase):
+    def test_absent_profile_does_not_contact_i3_or_start_a_qube(self):
+        with mock.patch.object(app, 'QUBE_PROFILE', Path('/nonexistent-qube-profile')), \
+                mock.patch('sys.argv', ['hud-workspace', '--qube', '--prepare']), \
+                mock.patch.object(app, 'ipc', side_effect=AssertionError('contacted i3')), \
+                mock.patch.object(app.subprocess, 'run', side_effect=AssertionError('started VM')):
+            app.main()
+
+    def test_profile_refuses_special_files_and_unsafe_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'profile'
+            with mock.patch.object(app, 'QUBE_PROFILE', path):
+                os.mkfifo(path)
+                with self.assertRaises(RuntimeError):
+                    app.qube_profile()  # O_NONBLOCK prevents hanging on a FIFO.
+                path.unlink()
+                for name in ('dom0', 'Domain-0', 'none', 'default', 'test-dm',
+                             'bad;exec', '../escape', 'bad"name', '-flag'):
+                    path.write_text(json.dumps({'name': name, 'workspace': 2}))
+                    info = SimpleNamespace(st_mode=0o100644, st_uid=0, st_gid=0, st_nlink=1)
+                    parent = SimpleNamespace(st_mode=0o40755, st_uid=0, st_gid=0)
+                    with mock.patch.object(os, 'fstat', return_value=info), \
+                            mock.patch.object(Path, 'lstat', return_value=parent), \
+                            self.assertRaises(RuntimeError):
+                        app.qube_profile()
+
+    def test_class_patterns_cannot_match_a_different_qube(self):
+        import re
+        for node in app.walk(app.qube_layout('hud.test')):
+            for match in node.get('swallows', []):
+                self.assertFalse(re.search(match['class'], 'hudXtest:HudQubeBrowser'))
+                self.assertFalse(re.search(match['class'], 'other:HudQubeBrowser'))
+                self.assertFalse(re.search(match['class'], 'hud.test:HudQubeBrowserSpoof'))
+
+    def test_foreign_workspace_is_never_rearranged_or_started(self):
+        foreign = {'id': 7, 'type': 'con', 'window': 99, 'window_properties': {'class': 'OtherApp'}}
+        tree = {'type': 'root', 'nodes': [workspace(2, [foreign])]}
+        with mock.patch.object(app, 'ipc', return_value=tree) as ipc, \
+                mock.patch.object(app.subprocess, 'run', side_effect=AssertionError('started VM')):
+            with self.assertRaisesRegex(RuntimeError, 'occupied'):
+                app.launch_qube({'name': 'hud-test', 'workspace': 2}, Path('/unused'), False)
+            ipc.assert_called_once_with('get_tree', query=True)
+
+    def test_repeated_launch_follows_moved_group_without_toggling_or_app_launches(self):
+        pane = {'id': 7, 'type': 'con', 'marks': [app.MARK + '-qube-hud-test-top']}
+        tree = {'type': 'root', 'nodes': [workspace(3, [pane])]}
+        with mock.patch.object(app, 'ipc', return_value=tree) as ipc, \
+                mock.patch.object(app.subprocess, 'run') as run:
+            app.launch_qube({'name': 'hud-test', 'workspace': 2}, Path('/unused'), False)
+            self.assertEqual(ipc.call_args_list[-1].args,
+                             ('workspace --no-auto-back-and-forth "3"',))
+            run.assert_called_once_with(['/usr/bin/qvm-start', '--skip-if-running', 'hud-test'],
+                                        check=True, timeout=120)
+            ipc.reset_mock()
+            run.reset_mock()
+            app.launch_qube({'name': 'hud-test', 'workspace': 2}, Path('/unused'), True)
+            ipc.assert_called_once_with('get_tree', query=True)
+            run.assert_not_called()
+
+    def test_qube_name_cannot_reuse_dom0_layout_marks(self):
+        hud_marks = {mark for node in app.walk(app.layout()) for mark in node.get('marks', [])}
+        for name in ('bindings', 'terminal', 'top', 'xen'):
+            qube_marks = {mark for node in app.walk(app.qube_layout(name))
+                          for mark in node.get('marks', [])}
+            self.assertFalse(hud_marks & qube_marks)
+
+    def test_renamed_workspace_two_is_still_checked_for_foreign_windows(self):
+        ws = workspace(2, [{'id': 7, 'type': 'con', 'window': 99,
+                            'window_properties': {'class': 'OtherApp'}}])
+        ws['name'] = '2: mail'
+        with mock.patch.object(app, 'ipc', return_value={'type': 'root', 'nodes': [ws]}) as ipc:
+            with self.assertRaisesRegex(RuntimeError, 'occupied'):
+                app.launch_qube({'name': 'hud-test', 'workspace': 2}, Path('/unused'), False)
+            ipc.assert_called_once_with('get_tree', query=True)
+
+    def test_qube_group_is_selected_inside_target_with_three_workspaces(self):
+        # i3's output content container is also type=con. With workspaces 1,
+        # 2 and 5 it has three children and contains every new leaf mark, so a
+        # whole-tree three-child search incorrectly finds it as a second group.
+        protected = client('bindings', 110, focused=True)
+        target = workspace(2, [])
+        content = {'id': 200, 'type': 'con', 'nodes': [
+            workspace(1, [protected]), target, workspace(5, [client('bindings', 150)])]}
+        tree = {'id': 0, 'type': 'root', 'nodes': [
+            {'id': 100, 'type': 'output', 'nodes': [content]}]}
+        group = app.qube_layout('hud-test')
+        for identity, node in enumerate(app.walk(group), 300):
+            node['id'] = identity
+        commands = []
+
+        def native_ipc(command, *, query=False):
+            if query:
+                self.assertEqual(command, 'get_tree')
+                return tree
+            commands.append(command)
+            if command.startswith('append_layout '):
+                path = Path(json.loads(command.removeprefix('append_layout ')))
+                self.assertEqual(json.loads(path.read_text()), app.qube_layout('hud-test'))
+                target['nodes'].append(group)
+            return [{'success': True}]
+
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(app, 'ipc', side_effect=native_ipc), \
+                mock.patch.object(app.subprocess, 'run', side_effect=AssertionError('started VM')):
+            app.launch_qube({'name': 'hud-test', 'workspace': 2}, Path(directory), True)
+        mark_commands = [command for command in commands if ' mark --add ' in command]
+        self.assertEqual(mark_commands, ['[con_id=300] mark --add ' + app.MARK + '-qube-hud-test'])
+        self.assertEqual(commands[-1], '[con_id=110] focus')
+        self.assertEqual([node['num'] for node in content['nodes']], [1, 2, 5])
+        self.assertIs(target['nodes'][0], group)
 
 
 class ButtonChecks(unittest.TestCase):

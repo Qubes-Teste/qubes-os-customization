@@ -130,5 +130,11 @@ if ! /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-workspace; then
         'Qubes HUD: workspace setup failed; continuing desktop autostart.' >&2
 fi
 
+# Native VM autostart may precede login. Prepare slots before GUI autostart;
+# the matching i3 rule also adopts clients from an already running GUI daemon.
+if ! /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-workspace --qube --prepare; then
+    printf '%s\n' 'Qubes HUD: optional qube workspace setup failed.' >&2
+fi
+
 xdg_autostart "${XDG_CONFIG_DIRS-/etc/xdg}"
 xdg_autostart "${XDG_CONFIG_HOME-$HOME/.config}"

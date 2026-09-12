@@ -15,6 +15,12 @@ qubes_gui:
     package_transport: qubes-updatevm
     desktop_user: user
     desktop_group: user
+    # Optional, separate qubes_gui.hud.qube state; absent name is disabled.
+    # Provision guest autostart before setting ready: true (see HUD README).
+    # qube_workspace:
+    #   name: hud-test
+    #   template: debian-13-xfce
+    #   ready: false
   # The guest state currently has safe fixed visual defaults. This section is
   # reserved for future toolkit-specific overrides.
   guest_hud: {}

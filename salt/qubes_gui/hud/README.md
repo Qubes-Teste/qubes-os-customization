@@ -545,6 +545,85 @@ an existing HUD session. Log out and back in to activate the official binary.
 An `i3-msg reload` only reloads configuration and is insufficient; after
 validation, `i3-msg restart` can deliberately restart i3 in place.
 
+## Optional qube workspace on workspace 2
+
+`qubes_gui.hud.qube` creates a separate green AppVM from an already installed
+Linux template. The first preset uses Firefox on the left (40%), two Xfce
+terminals stacked in the middle (30%), and Thunar on the right (30%). Its
+NetVM is `sys-firewall`. The template must already provide those programs;
+this state installs no package and changes no template.
+
+The approach follows the community's
+[Qube-specific workspaces](https://forum.qubes-os.org/t/qube-specific-workspaces/28513)
+idea using stock i3 layouts and
+[Qubes' standard guest autostart](https://doc.qubes-os.org/en/latest/user/how-to-guides/how-to-install-software.html#autostarting-installed-applications).
+It does not install the guide's Xfce scripts. Four native `.desktop` files in
+the AppVM user's `~/.config/autostart` start the apps on each guest GUI session.
+The existing dom0 `hud-workspace` helper supplies layout setup and repeated-click
+focus. There is no new guest script, resident layout daemon or custom binary.
+
+Provision in three phases so boot autostart is enabled only after guest setup.
+First synchronize and apply the current HUD as above, then select a **new**
+AppVM name and an installed template. For the tested Debian preset:
+
+```sh
+workspace_pillar='{"qubes_gui":{"hud":{"qube_workspace":{"name":"hud-test","template":"debian-13-xfce","ready":false}}}}'
+sudo qubesctl state.sls qubes_gui.hud.qube saltenv=user pillar="$workspace_pillar" test=True
+sudo qubesctl state.sls qubes_gui.hud.qube saltenv=user pillar="$workspace_pillar"
+sudo qubesctl --skip-dom0 --targets=hud-test state.sls qubes_gui.hud.qube saltenv=user pillar="$workspace_pillar" test=True
+sudo qubesctl --skip-dom0 --targets=hud-test state.sls qubes_gui.hud.qube saltenv=user pillar="$workspace_pillar"
+workspace_ready='{"qubes_gui":{"hud":{"qube_workspace":{"name":"hud-test","template":"debian-13-xfce","ready":true}}}}'
+sudo qubesctl state.sls qubes_gui.hud.qube saltenv=user pillar="$workspace_ready" test=True
+sudo qubesctl state.sls qubes_gui.hud.qube saltenv=user pillar="$workspace_ready"
+```
+
+The optional state does nothing when `qube_workspace.name` is absent; a normal
+HUD install creates no test qube. Existing targets are accepted only with the
+`hud-workspace-managed` ownership tag and the matching AppVM/template identity.
+All persistent settings are Salt-managed. Native Qubes transport works with
+dom0 offline; guest provisioning uses the installed Qubes management machinery.
+
+The qube starts at boot through its native `autostart` property; its windows
+appear on workspace 2 when the HUD GUI session is available. The same app group
+starts when Qubes Manager starts the qube, including when some other launcher
+was the reason it started. **Start workspace**, listed under that qube in the
+Applications menu and available in the HUD launcher, starts the qube or focuses
+its existing group without starting another copy of any app. Manager's own
+Start action remains disabled while a qube is running. Closing a pane does not
+automatically reopen it; restart the qube to start the complete group again.
+
+Placement uses the Qubes GUI daemon's trusted qube prefix on `WM_CLASS`, plus
+distinct native application classes. The i3 rule also arranges windows that
+arrived before layout preparation, so startup order is not a fixed-delay guess.
+Existing marked layouts retain user rearrangements. An occupied workspace 2
+containing unrelated windows is left intact and reported as a conflict.
+Workspace 1's dom0 dashboard is unaffected.
+
+For an immediate preview after provisioning, reload i3 configuration and start
+the new qube after a clean shutdown if guest setup left it running. Do this
+only when the test qube has no unsaved work:
+
+```sh
+i3-msg reload
+qvm-shutdown --wait hud-test
+/usr/local/libexec/qubes-hud/hud-workspace --qube
+```
+
+To remove this optional preset, use the same `workspace_pillar` from above:
+
+```sh
+sudo qubesctl --skip-dom0 --targets=hud-test state.sls qubes_gui.hud.qube-rollback saltenv=user pillar="$workspace_pillar" test=True
+sudo qubesctl --skip-dom0 --targets=hud-test state.sls qubes_gui.hud.qube-rollback saltenv=user pillar="$workspace_pillar"
+sudo qubesctl state.sls qubes_gui.hud.qube-rollback saltenv=user pillar="$workspace_pillar" test=True
+sudo qubesctl state.sls qubes_gui.hud.qube-rollback saltenv=user pillar="$workspace_pillar"
+i3-msg reload
+```
+
+This removes only the owned guest autostart and dom0 preset/menu files and
+disables the preset's boot startup. It retains the AppVM, its private data,
+ownership tag and currently open windows. Remove the optional preset before
+the full HUD rollback below; that rollback refuses while preset assets remain.
+
 ## Roll back
 
 Dry run and apply the rollback state:

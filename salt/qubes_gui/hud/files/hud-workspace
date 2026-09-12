@@ -20,6 +20,9 @@ CLASSES = {'bindings': 'QubesHudBindings', 'dom0': 'QubesHudDom0Logs',
            'xen': 'QubesHudXenLogs', 'top': 'QubesHudTop',
            'xentop': 'QubesHudXentop', 'cgtop': 'QubesHudCgtop',
            'terminal': 'QubesHudTerminal', 'manager': 'Qube Manager'}
+QUBE_PROFILE = Path('/etc/qubes-hud/qube-workspace.json')
+QUBE_CLASSES = {'browser': 'HudQubeBrowser', 'top': 'HudQubeTermTop',
+                'bottom': 'HudQubeTermBottom', 'files': 'Thunar'}
 
 
 def walk(node):
@@ -81,6 +84,109 @@ def ipc(command, *, query=False):
     return result
 
 
+def qube_profile():
+    try:
+        fd = os.open(QUBE_PROFILE, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None  # This optional preset is disabled on a normal HUD install.
+    with os.fdopen(fd) as source:
+        info = os.fstat(source.fileno())
+        parent = QUBE_PROFILE.parent.lstat()
+        if (not stat.S_ISDIR(parent.st_mode) or parent.st_uid != 0 or parent.st_gid != 0
+                or stat.S_IMODE(parent.st_mode) != 0o755
+                or not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_gid != 0
+                or stat.S_IMODE(info.st_mode) != 0o644 or info.st_nlink != 1):
+            raise RuntimeError('Unexpected qube workspace profile ownership or type')
+        profile = json.loads(source.read(1024))
+    if (not isinstance(profile, dict) or set(profile) != {'name', 'workspace'}
+            or not isinstance(profile['name'], str)
+            or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_.-]{0,30}', profile['name'])
+            or profile['name'] in {'dom0', 'Domain-0', 'none', 'default'}
+            or profile['name'].endswith('-dm') or type(profile['workspace']) is not int
+            or profile['workspace'] != 2):
+        raise RuntimeError('Invalid qube workspace profile')
+    return profile
+
+
+def qube_layout(name):
+    mark = MARK + '-qube-' + name
+    def slot(view, percent):
+        return {'type': 'con', 'name': view, 'percent': percent,
+                'marks': [mark + '-' + view], 'swallows': [{
+                    'class': '^' + re.escape(name + ':' + QUBE_CLASSES[view]) + '$'}]}
+    return {'type': 'con', 'layout': 'splith', 'nodes': [slot('browser', .4),
+        {'type': 'con', 'layout': 'splitv', 'percent': .3,
+         'nodes': [slot('top', .5), slot('bottom', .5)]}, slot('files', .3)]}
+
+
+def launch_qube(profile, runtime, prepare):
+    name, workspace = profile['name'], str(profile['workspace'])
+    mark = MARK + '-qube-' + name
+    marks = {mark, *(mark + '-' + view for view in QUBE_CLASSES)}
+    tree = ipc('get_tree', query=True)
+    workspaces = [node for node in walk(tree) if node['type'] == 'workspace']
+    existing = next((node for node in workspaces if any(
+        marks.intersection(child.get('marks', [])) for child in walk(node))), None)
+    if existing is not None:
+        if prepare:
+            return  # Keep user changes, even when the group has moved elsewhere.
+        ipc('workspace --no-auto-back-and-forth ' + json.dumps(existing['name']))
+    else:
+        def wmclass(node):
+            return (node.get('window_properties') or {}).get('class', '')
+        target = next((node for node in workspaces if node.get('num') == profile['workspace']), None)
+        if any(node.get('window') and not wmclass(node).startswith(name + ':')
+               for node in (walk(target) if target else [])):
+            raise RuntimeError('Workspace 2 is occupied; existing windows left in place')
+        if any(wmclass(child).startswith(name + ':') for node in workspaces
+               if node is not target for child in walk(node)):
+            raise RuntimeError('Qube windows are already elsewhere; layout left in place')
+        previous = next(node['id'] for node in walk(tree) if node.get('focused'))
+        try:
+            with tempfile.TemporaryDirectory(prefix='qubes-hud-layout-', dir=runtime) as directory:
+                path = Path(directory) / 'layout.json'
+                path.write_text(json.dumps(qube_layout(name)))
+                ipc('workspace --no-auto-back-and-forth number ' + workspace)
+                if target:
+                    ipc(f'[con_id={target["id"]}] focus')
+                ipc('append_layout ' + json.dumps(str(path)))
+            current = ipc('get_tree', query=True)
+            leaves = marks - {mark}
+            current_target = next(node for node in walk(current)
+                                  if node['type'] == 'workspace' and node.get('num') == profile['workspace'])
+            groups = [node for node in current_target['nodes'] if node['type'] == 'con'
+                      and len(node.get('nodes', [])) == 3
+                      and leaves <= {m for child in walk(node) for m in child.get('marks', [])}]
+            if len(groups) != 1:
+                raise RuntimeError('Expected one qube layout group')
+            group = groups[0]
+            ipc(f'[con_id={group["id"]}] mark --add {mark}')
+            group_ids = {node['id'] for node in walk(group)}
+            # Adopt windows that arrived before append_layout. Later arrivals
+            # are swallowed natively by i3; no guest command is repeated.
+            for view, cls in QUBE_CLASSES.items():
+                candidates = [node for node in walk(current) if node['id'] not in group_ids
+                              and wmclass(node) == name + ':' + cls]
+                slot = next(node for node in walk(group) if mark + '-' + view in node.get('marks', []))
+                if len(candidates) == 1 and not wmclass(slot) and slot.get('swallows'):
+                    old = candidates[0]['id']
+                    # The placeholder XID disappears on swallow. Guard both
+                    # operations atomically against a concurrently mapped app.
+                    empty = f'[con_id={slot["id"]} id={slot["window"]}]'
+                    ipc(f'{empty} swap container with con_id {old}')
+                    placeholder = next(node for node in walk(ipc('get_tree', query=True))
+                                       if node['id'] == slot['id'])
+                    if wmclass(placeholder) or not placeholder.get('swallows'):
+                        raise RuntimeError('Expected an empty qube layout placeholder')
+                    ipc(empty + ' kill')
+                    ipc(f'[con_id={old}] mark --add {mark}-{view}')
+        finally:
+            if prepare:
+                ipc(f'[con_id={previous}] focus')
+    if not prepare:
+        subprocess.run(['/usr/bin/qvm-start', '--skip-if-running', name], check=True, timeout=120)
+
+
 def workspace_buttons(workspaces):
     """Preserve i3's real state; absent defaults are only clickable bar entries."""
     result = list(workspaces)
@@ -135,7 +241,14 @@ def main():
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--buttons', action='store_true',
                         help='stream workspace buttons to i3bar (i3 4.23 or newer)')
+    parser.add_argument('--qube', action='store_true', help='start or focus the optional qube preset')
+    parser.add_argument('--prepare', action='store_true', help='prepare qube slots without starting or focusing')
     args = parser.parse_args()
+    if args.prepare and not args.qube:
+        parser.error('--prepare requires --qube')
+    profile = qube_profile() if args.qube else None
+    if args.qube and profile is None:
+        return
     for program in {command[0] for command in commands().values()} | {'/usr/bin/i3-msg'}:
         if not Path(program).is_file() or not os.access(program, os.X_OK):
             raise RuntimeError('Required stock executable unavailable: ' + program)
@@ -168,7 +281,10 @@ def main():
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return
-        launch(str(args.workspace), runtime)
+        if args.qube:
+            launch_qube(profile, runtime, args.prepare)
+        else:
+            launch(str(args.workspace), runtime)
     finally:
         os.close(fd)
 

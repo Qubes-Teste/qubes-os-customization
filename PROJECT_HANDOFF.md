@@ -1932,3 +1932,140 @@ The read-only kernel probe and temporary preview runner are not deployment
 dependencies. Evidence: `/tmp/qubes-hud-night-light-deploy/`, especially
 `installed-validation.json`, `controller-green-kernel.json`,
 `controller-restored.json`, Salt JSON results and `tests.log`.
+
+## Optional AppVM workspace preset (2026-09-12)
+
+The user authorized trying the community qube-specific-workspace idea,
+accepted starting the entire application group whenever its qube starts,
+requested boot startup on workspace 2, and delegated the test-qube choice.
+A new green `hud-test` AppVM was created from the installed
+`debian-13-xfce` template, with native `sys-firewall` networking. No existing
+qube or template was repurposed. The preset is Firefox on the left (40%),
+two Xfce terminals stacked in the middle (30%), and Thunar on the right (30%).
+
+The community guide targets Xfce and adds workspace-management scripts.
+This implementation instead uses the existing official i3 binary's native
+assignment/layout mechanisms and Qubes' standard guest XDG autostart. Four
+Salt-owned 0644 `.desktop` files in the AppVM user's persistent
+`~/.config/autostart` invoke the installed programs directly. Firefox uses
+`--class HudQubeBrowser --new-window about:blank`; the terminals use
+`--disable-server --class=HudQubeTermTop` and `HudQubeTermBottom`; files use
+Thunar. There is no guest runtime helper, new package, language module,
+compiled asset, template modification or source build. The selected template
+already supplies Firefox 140.15.0esr, Xfce Terminal and Thunar.
+
+The existing `hud-workspace` grows from 248 to 364 lines and gains `--qube`
+and `--prepare` modes. A root-owned optional
+`/etc/qubes-hud/qube-workspace.json` selects the name and fixed workspace 2.
+The helper validates its name/schema, root-owned parent/file modes, regular
+inode and link count, and uses the existing private runtime lock and native
+i3 IPC. Layout matching uses the Qubes GUI daemon's trusted `qube-name:`
+prefix on WM_CLASS, with exact per-application suffixes; titles do not
+establish qube identity. Native placeholders receive matching new clients.
+Already-open matching clients can be adopted without closing or relaunching
+them. Both adoption and placeholder cleanup match the original placeholder's
+XID plus container ID atomically, so a late real client cannot be swapped or
+closed by stale cleanup. Layout discovery is restricted to direct children
+of the target workspace: i3's output-content container is also type `con`
+and can otherwise mimic a three-column layout when three workspaces exist.
+
+The root-owned optional i3 include assigns the qube's windows to numeric
+workspace 2 and invokes `--prepare` when its windows appear. Startup also
+prepares slots before normal GUI autostart. This handles boot-before-login
+and later Manager starts without an additional resident event daemon or
+fixed sleep. Numeric matching includes renamed workspaces such as `2: mail`;
+unrelated occupancy is refused before layout mutation. Separate qube marks
+cannot collide with dom0 HUD pane names. Marked layouts preserve user
+rearrangements, and repeated manual launches focus their actual workspace
+with i3's auto-back-and-forth disabled for that command.
+
+The root desktop file `qubes-hud-qube-workspace.desktop` supplies **Start
+workspace** under the selected qube in the standard Applications menu and
+HUD launcher. It runs the dom0 helper, which uses native
+`qvm-start --skip-if-running`; it does not repeat guest application commands.
+Qubes Manager itself remains unmodified: its ordinary Start launches the
+guest and therefore its app group, while its Start action remains disabled
+for running qubes. Closing a pane does not refill its old slot; restarting
+the qube launches the complete group again. This first preset supports one
+AppVM and workspace 2, not arbitrary profiles or disposable-session recovery.
+
+### Deployment and rollback
+
+The separately applied `qubes_gui.hud.qube` state is a no-op when its name
+pillar is absent; a normal HUD install creates no AppVM. The documented
+three phases create/tag a new AppVM with `ready: false`, configure its guest
+autostart through native Qubes Salt, then publish the dom0 profile/i3/menu
+and enable native boot `autostart` with `ready: true`. The final phase checks
+the installed helper's new command support and validates the i3 snippet.
+Existing targets require the ownership tag, AppVM class and exact configured
+template. Unsupported/missing apps, unsafe parents, unowned files and changed
+owned files are refused. Guest private-home configuration is intentionally
+separate from the existing template-only `guest_hud` theme state.
+
+The stock Qubes Salt `qvm.prefs` provider was found to call `setattr()` even
+in test mode: its reported preview actually toggled this test qube's boot
+property. All new preference states therefore render descriptive native
+`test.nop` previews when `opts.test` is true, with matching requisites;
+real applies still use native `qvm.prefs`. This covers create preferences,
+final boot enablement and rollback disablement. It is an explicit workaround
+for the installed provider, not a custom replacement for Qubes' package or
+VM-management tooling. Normal deployment uses no direct dom0 network path.
+
+`qube-rollback.sls` shares the same state logic. Run it first in the selected
+guest, then dom0, using the same name/template pillar. It removes only exact
+owned autostart/preset/menu files and disables the preset's boot startup;
+the AppVM, private data, tag and live windows remain. Main HUD rollback
+refuses while any optional preset asset remains, avoiding a dead launcher
+or guest autostart referring to a removed layout helper. Main HUD install
+also refuses a foreign or unsafe optional i3 include. The README and pillar
+example document this opt-in deployment and rollback order.
+
+### Validation and live trial
+
+All 87 repository tests pass. Native private i3 tests verify new-client
+swallowing, existing-client adoption, concurrent late arrivals, repeated
+launches, renamed workspace handling, closing/reopening clients and actual
+`for_window` preparation. Tests with three populated workspaces (1, 2, 5)
+verify that only the target's direct layout is selected and other workspaces
+retain structure, geometry and focus. The regression also fails against the
+previous broad search. Private sessions and generated Python caches were
+cleaned up. Evidence: `/tmp/qubes-hud-qube-layout-test/`, including
+`three-workspaces-results.json`.
+
+Native default Salt rendering retains 71 main apply and 60 main rollback
+states when no optional profile is present; both optional states default to
+one no-op. Package install/refresh/remove still resolve to
+`qubes_dom0_update`. Targeted Salt fixtures cover ownership, invalid names
+and booleans, readiness, guest rollback without installed applications and
+all preview/apply requisite branches. No new deployment dependency or fetch
+entrypoint was added.
+
+Live creation passed six states, guest setup passed six, and final dom0
+configuration passed ten. The 71-state HUD update changed only its existing
+workspace helper, startup helper and i3 config; the layout-discovery fix
+subsequently changed only the workspace helper. A normal test-qube restart
+launched all four guest apps via XDG autostart. Their correct live classes,
+positions and retained IDs are recorded in
+`/tmp/hud-qube-deploy/live-validation.json`; three actual desktop-launcher
+invocations preserved all four clients and the layout. Workspace 1's dom0
+dashboard and workspace 5's existing windows retained their exact structure
+and geometry. No full-machine reboot was performed during this task.
+
+Final repeat apply passed all 81 combined dom0 HUD/preset states and all six
+guest states with zero changes. The corrected native ready and rollback
+previews passed ten and four states respectively while preserving the
+test qube's complete preference output byte-for-byte, including
+`autostart=True`. Guest rollback preview passed four states. Main HUD rollback
+preview correctly returned only the explicit preset-active refusal and
+changed nothing. Installed helpers match the committed assets. Evidence is
+under `/tmp/hud-qube-deploy/`, especially `native-preview-validation.json`,
+`repeat-validation.json`, `main-rollback-guard.json` and the final
+`live-validation.json`. The earlier boot-property observation is retained
+separately in `live-validation-before-preview-fix.json`.
+
+The screen locked and DPMS turned the monitor off during verification.
+Read-only inspection confirmed all four client/frame windows are mapped,
+Picom retains its compositor selection, and the captured solid `#030b12`
+surface is i3lock above those frames. The lock, input and display power state
+were left intact. Workspace 2 is selected behind the lock and ready for the
+user's normal unlock; there was no compositor restart or screenshot repair.

@@ -1,6 +1,6 @@
 # Managed by qubes-os-customization Salt formula. Local changes are overwritten.
 # Self-contained derivative of /etc/i3/config.keycodes from
-# i3-settings-qubes-1.14-1.fc41.noarch. No external i3 config is included.
+# i3-settings-qubes-1.14-1.fc41.noarch. Optional Salt-owned preset below.
 # Source SHA-256: 40b9b4e4fe315fdad715df477a668018a8ba0624842bbad6a4699e19e90cf9e6
 # Qubes integration and physical keycode bindings are intentionally preserved.
 
@@ -209,6 +209,9 @@ assign [class="^QubesHud(Bindings|Dom0Logs|XenLogs|Terminal|Top|Xentop|Cgtop)$"]
 no_focus [class="^QubesHud(Bindings|Dom0Logs|XenLogs|Terminal|Top|Xentop|Cgtop)$"]
 assign [instance="^qubes-hud-manager$"] workspace number 1
 no_focus [instance="^qubes-hud-manager$"]
+
+# Optional, explicitly provisioned qube preset; unmatched glob is harmless.
+include /etc/qubes-hud/qube-workspace.i[3]
 
 bindsym $mod+Tab workspace next
 bindsym $mod+Shift+Tab workspace prev

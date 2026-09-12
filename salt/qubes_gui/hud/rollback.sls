@@ -483,6 +483,13 @@
 {% endif %}
 
 {% set unmanaged_collision = collision.found %}
+{% set qube_preset = namespace(present=false) %}
+{% for path in ['/etc/qubes-hud/qube-workspace.json', '/etc/qubes-hud/qube-workspace.i3',
+    '/usr/share/applications/qubes-hud-qube-workspace.desktop'] %}
+  {% if salt['file.lstat'](path) %}
+    {% set qube_preset.present = true %}
+  {% endif %}
+{% endfor %}
 
 {% if not platform_ok %}
 qubes_gui_hud_rollback_unsupported_platform:
@@ -500,6 +507,14 @@ qubes_gui_hud_rollback_official_i3_required:
     - name: >-
         Refusing rollback without an intact, root-owned /usr/bin/i3 matching
         the installed i3 RPM. Restore the official i3 package first.
+
+{% elif qube_preset.present %}
+qubes_gui_hud_rollback_qube_preset_active:
+  test.fail_without_changes:
+    - name: >-
+        First apply qubes_gui.hud.qube-rollback to the configured guest and
+        then dom0 with its qube_workspace pillar. This removes guest autostart,
+        boot startup and the optional launcher before its HUD helper is removed.
 
 {% elif unmanaged_collision %}
 qubes_gui_hud_rollback_unmanaged_target_refused:
