@@ -5,6 +5,7 @@
 {% set transport = settings.get('package_transport', 'qubes-updatevm') %}
 {% set user_info = salt['user.info'](desktop_user) %}
 {% set desktop_uid = user_info.get('uid', -1) if user_info else -1 %}
+{% set desktop_gid = salt['file.group_to_gid'](desktop_group) %}
 {% set desktop_home = user_info.get('home', '/home/' ~ desktop_user) if user_info else '/home/' ~ desktop_user %}
 {% set owner_marker = 'Managed by qubes-os-customization Salt formula' %}
 {% set hud_asset_marker = 'Qubes HUD managed file. Owner: salt/qubes_gui/hud.' %}
@@ -77,6 +78,21 @@
 {% set monitor_module = '/usr/local/libexec/qubes-hud/hud_monitor.py' %}
 {% set terminal_module = '/usr/local/libexec/qubes-hud/hud_terminal.py' %}
 {% set workspace_helper = '/usr/local/libexec/qubes-hud/hud-workspace' %}
+{% set night_helper = '/usr/local/libexec/qubes-hud/hud-night-light' %}
+{% set output_module = '/usr/local/libexec/qubes-hud/hud_output.py' %}
+{% set night_config_dir = desktop_home ~ '/.config/qubes-hud' %}
+{% set night_config = night_config_dir ~ '/night-light.ini' %}
+{% set night_desktop = '/usr/share/applications/qubes-hud-night-light.desktop' %}
+{% set night_units = [
+    ('apply', 'qubes-hud-night-light.service'),
+    ('timer', 'qubes-hud-night-light.timer'),
+    ('restore', 'qubes-hud-night-light-restore.service')
+] %}
+{% set night_root_targets = [(night_helper, '0755'),
+    (output_module, '0644'), (night_desktop, '0644')] %}
+{% for unit, filename in night_units %}
+  {% set _ = night_root_targets.append(('/usr/lib/systemd/user/' ~ filename, '0644')) %}
+{% endfor %}
 {% set bindings_data = '/usr/local/libexec/qubes-hud/bindings.json' %}
 {% set bindings_desktop = '/usr/share/applications/qubes-hud-bindings.desktop' %}
 {% set dom0_logs_desktop = '/usr/share/applications/qubes-hud-dom0-logs.desktop' %}
@@ -296,10 +312,15 @@
 {% for path in terminal_text_targets %}
   {% set _ = text_targets.append((path, [hud_asset_marker])) %}
 {% endfor %}
+{% for path, mode in night_root_targets + [(night_config, '0644')] %}
+  {% set _ = text_targets.append((path, [hud_asset_marker])) %}
+{% endfor %}
 {% set directory_targets = [
     '/usr',
     '/usr/lib',
     '/usr/lib/user-tmpfiles.d',
+    '/usr/lib/systemd',
+    '/usr/lib/systemd/user',
     '/usr/share',
     '/usr/share/icons',
     '/usr/share/applications',
@@ -307,6 +328,7 @@
     cyan_icon_backup,
     desktop_home,
     desktop_home ~ '/.config',
+    night_config_dir,
     desktop_home ~ '/.config/i3',
     desktop_home ~ '/.config/rofi',
     desktop_home ~ '/.config/dunst',
@@ -357,6 +379,26 @@
       target_lstat.get('st_uid') != 0 or target_lstat.get('st_gid') != 0
       or target_lstat.get('st_nlink') != 1
       or salt['file.get_mode'](path) != '0644') %}
+    {% set collision.found = true %}
+  {% endif %}
+{% endfor %}
+
+{% for path, expected_mode in night_root_targets %}
+  {% set target_lstat = salt['file.lstat'](path) %}
+  {% if target_lstat|length > 0 and (
+      target_lstat.get('st_uid') != 0 or target_lstat.get('st_gid') != 0
+      or target_lstat.get('st_nlink') != 1
+      or salt['file.get_mode'](path) != expected_mode) %}
+    {% set collision.found = true %}
+  {% endif %}
+{% endfor %}
+{% for path, expected_mode in [(night_config_dir, '0700'), (night_config, '0644')] %}
+  {% set target_lstat = salt['file.lstat'](path) %}
+  {% if target_lstat|length > 0 and (
+      target_lstat.get('st_uid') != desktop_uid
+      or target_lstat.get('st_gid') != desktop_gid
+      or salt['file.get_mode'](path) != expected_mode
+      or (path == night_config and target_lstat.get('st_nlink') != 1)) %}
     {% set collision.found = true %}
   {% endif %}
 {% endfor %}
@@ -648,6 +690,97 @@ qubes_gui_hud_glow_runtime:
       - pkg: qubes_gui_hud_runtime_packages_qubes_updatevm
 {% endif %}
 
+{% for asset, path, source, mode in [
+    ('output_module', output_module, 'hud_output.py', '0644'),
+    ('night_light_helper', night_helper, 'hud-night-light', '0755')
+] %}
+qubes_gui_hud_{{ asset }}:
+  file.managed:
+    - name: {{ path }}
+    - source: salt://qubes_gui/hud/files/{{ source }}
+    - check_cmd: >-
+        /usr/bin/python3 -c 'import ast, sys;
+        ast.parse(open(sys.argv[1], encoding="utf-8").read(),
+        filename=sys.argv[1])'
+    - user: root
+    - group: root
+    - mode: '{{ mode }}'
+    - require:
+      - file: qubes_gui_hud_binary_directory
+{% if asset == 'night_light_helper' %}
+      - file: qubes_gui_hud_output_module
+{% endif %}
+{% endfor %}
+
+qubes_gui_hud_night_light_directory:
+  file.directory:
+    - name: {{ night_config_dir }}
+    - user: {{ desktop_user }}
+    - group: {{ desktop_group }}
+    - mode: '0700'
+    - makedirs: true
+
+qubes_gui_hud_night_light_config:
+  file.managed:
+    - name: {{ night_config }}
+    - source: salt://qubes_gui/hud/files/night-light.ini
+    - user: {{ desktop_user }}
+    - group: {{ desktop_group }}
+    - mode: '0644'
+    - replace: false
+    - require:
+      - file: qubes_gui_hud_night_light_directory
+
+qubes_gui_hud_night_light_runtime:
+  cmd.run:
+    - name: /usr/bin/python3 -B {{ night_helper }} --check
+    - unless: /usr/bin/python3 -B {{ night_helper }} --check
+    - require:
+      - file: qubes_gui_hud_output_module
+      - file: qubes_gui_hud_night_light_helper
+{% if transport == 'direct-dom0' %}
+      - cmd: qubes_gui_hud_runtime_packages_direct
+{% else %}
+      - pkg: qubes_gui_hud_runtime_packages_qubes_updatevm
+{% endif %}
+
+{% for unit, filename in night_units %}
+qubes_gui_hud_night_light_{{ unit }}_unit:
+  file.managed:
+    - name: /usr/lib/systemd/user/{{ filename }}
+    - source: salt://qubes_gui/hud/files/{{ filename }}
+    - user: root
+    - group: root
+    - mode: '0644'
+    - require:
+      - cmd: qubes_gui_hud_night_light_runtime
+      - file: qubes_gui_hud_night_light_config
+{% endfor %}
+
+qubes_gui_hud_night_light_reload_units:
+  cmd.run:
+    - name: /usr/bin/systemctl --user daemon-reload
+    - runas: {{ desktop_user }}
+    - env:
+        XDG_RUNTIME_DIR: /run/user/{{ desktop_uid }}
+        DBUS_SESSION_BUS_ADDRESS: unix:path=/run/user/{{ desktop_uid }}/bus
+    - onlyif: /usr/bin/test -S /run/user/{{ desktop_uid }}/bus
+    - onchanges:
+{% for unit, filename in night_units %}
+      - file: qubes_gui_hud_night_light_{{ unit }}_unit
+{% endfor %}
+
+qubes_gui_hud_night_light_desktop:
+  file.managed:
+    - name: {{ night_desktop }}
+    - source: salt://qubes_gui/hud/files/qubes-hud-night-light.desktop
+    - user: root
+    - group: root
+    - mode: '0644'
+    - require:
+      - cmd: qubes_gui_hud_night_light_runtime
+      - cmd: qubes_gui_hud_night_light_reload_units
+
 qubes_gui_hud_bindings_keyboard:
   file.managed:
     - name: {{ bindings_keyboard }}
@@ -900,6 +1033,9 @@ qubes_gui_hud_autostart_helper:
       - cmd: qubes_gui_hud_workspace_runtime
       - cmd: qubes_gui_hud_terminal_runtime
       - cmd: qubes_gui_hud_terminal_current_runtime
+      - cmd: qubes_gui_hud_night_light_runtime
+      - cmd: qubes_gui_hud_night_light_reload_units
+      - file: qubes_gui_hud_night_light_desktop
 {% for view, desktop, title, wmclass in terminal_views %}
       - file: qubes_gui_hud_{{ view }}{% if view in ['dom0', 'xen'] %}_logs{% endif %}_desktop
 {% endfor %}

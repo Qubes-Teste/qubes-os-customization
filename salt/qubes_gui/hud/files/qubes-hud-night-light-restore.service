@@ -1,0 +1,9 @@
+# Qubes HUD managed file. Owner: salt/qubes_gui/hud.
+[Unit]
+Description=Restore the saved Qubes HUD display output colors
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-night-light --restore
+UMask=0077
+TimeoutStartSec=30s

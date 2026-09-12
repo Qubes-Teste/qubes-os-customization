@@ -91,9 +91,9 @@ references under `style_guide/`. It installs an exactly black background,
 34-pixel cyan glow with evenly lit corners, a translucent Rofi launcher, translucent
 Dunst notifications, and glossy dom0 GTK chrome. On the current 598-mm-wide
 reference display, the gap is approximately 10 mm; its physical size varies
-with display DPI. The dom0 HUD state deliberately does not style AppVM
-application content or web pages. The guest-template state below adds the
-matching toolkit style.
+with display DPI. The dom0 HUD toolkit theme does not style AppVM application
+content or web pages. The guest-template state below adds the matching style;
+the scheduled display filter described below covers every visible application.
 
 Normal dom0 shell, toolkit, and terminal text uses the same `#19d3ff` cyan as
 the focused outer frame. Semantic selection, muted, disabled, and urgent text
@@ -197,6 +197,16 @@ is necessary because the installed stock terminals lack horizontal scrolling.
 Salt installs and validates the assets and removes owned files on rollback.
 Applying Salt does not move current windows or reload i3; startup placement
 takes effect at the next HUD login.
+
+**HUD Night Light** applies a green monochrome filter to the display output
+from **21:00 to 08:00** local time, including every qube, website, image and
+Qubes label color. Open its application-launcher entry to change the hours
+or choose Automatic, Day or Night. Day restores the saved output colors.
+It uses a native systemd user timer and small Python/ctypes helpers with the
+already installed X11 libraries; no package or custom binary is added.
+Each active graphics output must expose XRandR's `CTM` property. The schedule
+checks once per minute, including after resume and display changes; see the
+[display-filter details](salt/qubes_gui/hud/README.md#display-wide-night-light).
 
 On another Qubes 4.3 machine, apply the base state first and then the HUD:
 

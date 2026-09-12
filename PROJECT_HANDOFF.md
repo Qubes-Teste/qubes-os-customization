@@ -10,7 +10,7 @@ documentation remains authoritative for individual states and commands:
 - `salt/qubes_gui/guest_hud/README.md`
 
 Always verify the current worktree and history. The prior published baseline is
-`bb8c68f` (`Restore HUD scrollbars and show recent Xen output`),
+`f1a1403` (`Align HUD scrollbars and retain five workspace buttons`),
 which includes the accepted official i3/glow changes, HUD Bindings, host logs,
 Manager and the terminal layout, and these project instructions. The latest integration and validation are recorded at
 the end of this document.
@@ -88,6 +88,11 @@ machine:
     and missing two-axis scrollbars. The stock Xterm view is superseded by the
     shared GTK/VTE viewer described in the final section, retaining native log
     readers and the preference to minimize custom code.
+14. Cyan scrollbar separators and five persistent i3bar workspace buttons were
+    accepted without creating unused native workspaces.
+15. The user requested a scheduled green display-output filter covering all
+    qubes and accepted altered label colors. Native systemd scheduling and
+    existing X11 color-matrix controls implement it without new packages.
 
 ## Repository and deployment architecture
 
@@ -128,6 +133,9 @@ semantic muted, selection, warning, urgent, and Qubes trust-label colors. The
 session includes the black background, compact top bar, 32-pixel inner gaps,
 rounded translucent windows, blur, a strong cyan outer halo, an inner rim,
 Rofi, Dunst, and matching GTK/terminal styling.
+From 21:00 to 08:00 by default, the user-configurable output night light maps
+the whole display to green monochrome, including Qubes label colors. The
+underlying palettes remain unchanged and normal output colors return by day.
 
 The inner cyan rim is applied after Picom's `default_post_processing()`.
 Picom 12.4 synthesizes curved border pixels from the original texture edge;
@@ -1814,3 +1822,113 @@ and focus. The bar's provider is PID908814 with native subscriber908815.
 The current HUD preview stays on workspace 2; future login starts it only on 1.
 Evidence: `/tmp/qubes-hud-cyan-scrollbars-deploy/`, especially
 `installed-validation.json`, `live-validation.json` and `reload-validation.json`.
+
+## Scheduled display-wide green night light (2026-09-12)
+
+The user superseded the initial HUD-accent-only choice with a display-output
+filter covering every application in every qube, and explicitly accepted
+changes to displayed Qubes label colors. Default local hours are 21:00–08:00,
+adjustable through the new **HUD Night Light** Rofi menu or `hud-night-light
+--hours START END`. Manual `--mode day`, `night` and `auto` are available.
+The marked user-owned 0644 `~/.config/qubes-hud/night-light.ini` lives in an
+owned 0700 directory and uses Salt `replace: false` to retain user choices.
+
+Night applies a green monochrome matrix at the graphics output: red and blue
+rows are zero, while fixed Rec.709 weights combine all input channels into
+green. It composes with the original output matrix instead of discarding it.
+Day restores that original matrix only while the current matrix still matches
+the helper's saved night or original transform and the connector/EDID identity
+matches. Records remain after restoration so a cached Xorg value cannot hide
+a failed DRM restore from later retries; external changes release ownership.
+Night adopts an external reset/calibration as the new baseline. Disconnected
+outputs retain records for later restoration; temporarily unreadable matrices
+retain their records and report an error. Original values are persisted before
+the first hardware write; failed writes therefore retain restoration data.
+Private 0600 runtime state and locks are bounded, owner/type/mode/link checked,
+and shared by equivalent `:0` and `:0.0` display names. No root display access.
+
+`hud-night-light` is a standard-library controller; `hud_output.py` binds the
+already installed libX11/libXrandr using ctypes. No system binary is patched,
+compiled or pinned, and no package or third-party Python dependency is added. Direct native
+RandR calls avoid an actual CLI incompatibility: xrandr 1.5.2 accepts 18 raw
+CTM words while 1.5.3 uses nine floating-point coefficients. The adapter bounds
+property reads, uses native longs for Xlib format-32 data, catches X errors,
+refuses absent/malformed CTM properties and verifies exact property readback.
+There is no theme, guest application, i3, Picom or glow-helper modification.
+
+Salt installs three native systemd user units (oneshot apply, minute calendar
+timer, oneshot restore) and a desktop launcher. There is no enabled global
+target or additional daemon. HUD autostart imports DISPLAY/XAUTHORITY and
+starts the timer and first apply; Salt apply only installs/validates and
+reloads an existing user manager. `--start` activates an already open session.
+The timer reacts to clock/timezone changes; elapsed calendar events catch up
+after resume. Hotplug or output-reset correction occurs at the next minute,
+normally within 61 seconds, rather than synchronously with the display event.
+Night and subsequent day reassert the saved transform on each tick, even with
+matching property readback, because Xorg can retain the property after a failed
+DRM write. It
+does not recompute from the filtered value or rewrite unchanged runtime state.
+`--stop` stops timer/apply and restores connected saved outputs. Rollback
+orders this before deleting the controller, preferences or units, then reloads
+the user manager. Marked files, owner/group/mode, link and directory guards
+apply to every new path; the user directory and runtime records are retained.
+
+### Hardware limits and validation
+
+Every active output must expose a working XRandR CTM property. An unsupported
+active output refuses night activation before new writes. The reference Intel
+i915/modesetting HDMI-1 output exposes the property and accepted CTM writes.
+Other graphics drivers require verification. Xorg may log a DRM CTM failure
+while still accepting its X property: exit status/readback alone is not proof
+of physical output. Screenshots capture before this stage and cannot prove
+the visible effect. The filter sets RGB channels; no optical measurement or
+medical effect is claimed. Boot/login screens before this user's HUD startup
+are outside the session filter's scope.
+
+Private Xvfb tests exercised native writes, unsigned values, malformed/missing
+properties, actual X errors, EDID changes, exact restoration and cleanup.
+A detached temporary preview restorer recovered the original matrix after
+20.006 seconds. The live 20-second preview restored the exact original CTM;
+the complete normalized i3 tree/workspaces/focus, i3/Picom/glow process
+identities and compositor selection owner were unchanged. No new Xorg CTM
+driver errors appeared. The preview/watchdog is maintainer-only temporary
+test code, not a deployed recovery service. Evidence:
+`/tmp/qubes-hud-output-test/` and `/tmp/qubes-hud-ctm-preview-6xl7mpkg/`.
+
+Default installed-Salt render passes 71 apply / 60 rollback states and retains
+`qubes_dom0_update` for install, refresh and removal. All 441 Salt safety and
+ordering fixtures pass, including modified-file refusals, partial installs,
+preserved hours and restore-before-removal. Native unit validation, headless
+runtime binding and shell syntax checks pass. Deployment audit covers 68
+files and 15 shebang entrypoints with no new dependencies, compiled assets,
+source builds or default direct-network path. Evidence:
+`/tmp/hud-night-light-{installed-salt-render,salt-fixtures,regression-salt-fixtures,entrypoint-audit}.json`.
+
+### Installed-controller and kernel verification
+
+All 79 repository tests pass, including cached-property/hardware-write failure
+simulations for both scheduled phases, retained calibration, output identity
+changes, malformed state, FIFO refusal without blocking, native service
+ordering and menu settings. The exact Rofi prompts also passed private Xvfb
+tests for cancellation, selection indices and accepting prefilled hours.
+
+Formula sync and default dry-run/apply pass all 71 states. A final controller
+update was applied, then repeat apply passed with zero changes. Installed
+source hashes and root ownership/modes match; preferences remain user-owned.
+Rollback dry-run passes 60 states without executing the rollback. No package
+was installed or removed. Existing workspace trees, all client identities and
+geometry, focus, compositor selection and i3/Picom/glow processes are unchanged.
+
+The installed controller then ran a second 20-second preview with an automatic
+detached return to the original schedule. A temporary read-only libdrm probe
+queried active i915 CRTC 88 directly: its kernel CTM contained exactly the
+requested nine coefficients (zero red/blue rows, green weights 913110047,
+3071760610 and 310096639 in S31.32). This verifies the kernel received the
+transform beyond Xorg's cached property. The native `--stop` restore service
+returned the kernel CTM to blob 0 (identity). Automatic 21:00–08:00 scheduling
+then resumed successfully; the current daytime desktop has normal colors.
+No optical measurement, suspend/reboot or physical hotplug test was performed.
+The read-only kernel probe and temporary preview runner are not deployment
+dependencies. Evidence: `/tmp/qubes-hud-night-light-deploy/`, especially
+`installed-validation.json`, `controller-green-kernel.json`,
+`controller-restored.json`, Salt JSON results and `tests.log`.

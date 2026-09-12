@@ -1,0 +1,11 @@
+# Qubes HUD managed file. Owner: salt/qubes_gui/hud.
+[Desktop Entry]
+Type=Application
+Name=HUD Night Light
+Comment=Choose automatic, daytime or green output colors and schedule hours
+Exec=/usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-night-light --menu
+TryExec=/usr/local/libexec/qubes-hud/hud-night-light
+Icon=preferences-desktop-display
+Terminal=false
+Categories=Settings;DesktopSettings;
+StartupNotify=false

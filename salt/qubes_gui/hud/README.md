@@ -287,6 +287,70 @@ files and the startup hook without closing applications or restarting the
 live desktop. Old managed `hud_logs.py`, `hud_monitor.py`, Xterm resources and the Xen
 rsyslog configuration are removed only after their replacements validate.
 
+## Display-wide night light
+
+**HUD Night Light** switches the entire X11 display to green monochrome from
+**21:00 to 08:00** in the system's local timezone. This acts on the graphics
+output after applications are drawn, so it covers dom0, all qubes, fullscreen
+applications, images and Qubes label colors. The user explicitly accepted the
+label-color change. The red and blue output matrix rows are zero; all three
+input channels contribute to green luminance. This is a green filter, rather
+than the warm white-temperature adjustment commonly called night light.
+
+Open **HUD Night Light** in the application launcher to select Automatic,
+Day, Night or Change hours. Enter two 24-hour times, for example `21:00 08:00`.
+The interval includes its start and excludes its end; equal times are refused.
+Changing hours selects Automatic. The marked preferences file
+`~/.config/qubes-hud/night-light.ini` is preserved by subsequent Salt applies.
+Equivalent commands, run as the desktop user, are:
+
+```sh
+/usr/local/libexec/qubes-hud/hud-night-light --hours 21:00 08:00
+/usr/local/libexec/qubes-hud/hud-night-light --mode night
+/usr/local/libexec/qubes-hud/hud-night-light --mode auto
+/usr/local/libexec/qubes-hud/hud-night-light --status
+```
+
+Salt installs a native systemd user oneshot service and timer; the HUD login
+hook imports the local display environment and starts them. An existing
+session can start them with `hud-night-light --start` at the full path above.
+Apply itself does not activate the filter. Automatic checks run at each local
+minute boundary and on clock/timezone changes. Calendar timers catch up after
+resume; an output reset or newly connected monitor is corrected at the next
+check, normally within 61 seconds. Both night and subsequent day checks reassert
+the owned matrix even if Xorg's cached property already matches, so a cached
+value does not prevent retries.
+No compositor, window-manager or application
+restart is involved. `--mode day` keeps normal colors; `--stop` stops the timer
+and restores saved transforms for connected outputs. General HUD rollback
+does the same before deleting the helper and service units.
+
+The graphics driver must expose a working XRandR `CTM` color-matrix property
+on every active output. Missing support causes night activation to fail with
+an error, before any new matrices are written. This was tested on the reference
+machine's Intel i915/modesetting HDMI output; support on other graphics drivers
+must be verified. Query errors appear in the user service journal. X-property
+readback alone cannot prove that a driver applied the physical output change,
+and screenshots usually capture pixels before this transform.
+
+`hud-night-light` handles the schedule, menu and restoration; `hud_output.py`
+binds the existing `libX11.so.6` and `libXrandr.so.2` through standard-library
+ctypes. The native API avoids the incompatible `xrandr --set CTM` command-line
+formats in xrandr 1.5.2 and 1.5.3. Neither helper replaces a system binary or
+requires a Python module or package. Native Salt configuration cannot itself
+perform the output matrix conversion and exact restoration at session runtime.
+
+Original matrices are saved before writes in a private per-display runtime
+file, with output identity derived from the connector name and EDID hash.
+Repeated checks do not accumulate the filter. A reset or external calibration
+becomes the new baseline at night; daytime restoration leaves an externally
+changed matrix alone. Disconnected outputs retain their saved record until
+they can be restored, without applying it to a different identified monitor.
+Day records remain available for retries until an external change releases
+ownership or the private login runtime is removed.
+The filter changes displayed RGB values; it does not measure a monitor's
+physical light spectrum or promise a medical effect.
+
 ## Supported platform and official packages
 
 Application is refused unless all of these checks pass:

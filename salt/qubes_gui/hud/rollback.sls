@@ -3,6 +3,8 @@
 {% set desktop_user = settings.get('desktop_user', 'user') %}
 {% set desktop_group = settings.get('desktop_group', desktop_user) %}
 {% set user_info = salt['user.info'](desktop_user) %}
+{% set desktop_uid = user_info.get('uid', -1) if user_info else -1 %}
+{% set desktop_gid = salt['file.group_to_gid'](desktop_group) %}
 {% set desktop_home = user_info.get('home', '/home/' ~ desktop_user) if user_info else '/home/' ~ desktop_user %}
 {% set owner_marker = 'Managed by qubes-os-customization Salt formula' %}
 {% set hud_asset_marker = 'Qubes HUD managed file. Owner: salt/qubes_gui/hud.' %}
@@ -70,6 +72,21 @@
 {% set monitor_module = '/usr/local/libexec/qubes-hud/hud_monitor.py' %}
 {% set terminal_module = '/usr/local/libexec/qubes-hud/hud_terminal.py' %}
 {% set workspace_helper = '/usr/local/libexec/qubes-hud/hud-workspace' %}
+{% set night_helper = '/usr/local/libexec/qubes-hud/hud-night-light' %}
+{% set output_module = '/usr/local/libexec/qubes-hud/hud_output.py' %}
+{% set night_config_dir = desktop_home ~ '/.config/qubes-hud' %}
+{% set night_config = night_config_dir ~ '/night-light.ini' %}
+{% set night_desktop = '/usr/share/applications/qubes-hud-night-light.desktop' %}
+{% set night_units = [
+    ('apply', 'qubes-hud-night-light.service'),
+    ('timer', 'qubes-hud-night-light.timer'),
+    ('restore', 'qubes-hud-night-light-restore.service')
+] %}
+{% set night_root_targets = [(night_helper, '0755'),
+    (output_module, '0644'), (night_desktop, '0644')] %}
+{% for unit, filename in night_units %}
+  {% set _ = night_root_targets.append(('/usr/lib/systemd/user/' ~ filename, '0644')) %}
+{% endfor %}
 {% set bindings_data = '/usr/local/libexec/qubes-hud/bindings.json' %}
 {% set bindings_desktop = '/usr/share/applications/qubes-hud-bindings.desktop' %}
 {% set dom0_logs_desktop = '/usr/share/applications/qubes-hud-dom0-logs.desktop' %}
@@ -304,6 +321,9 @@
 {% for path in terminal_text_targets %}
   {% set _ = text_targets.append((path, [hud_asset_marker])) %}
 {% endfor %}
+{% for path, mode in night_root_targets + [(night_config, '0644')] %}
+  {% set _ = text_targets.append((path, [hud_asset_marker])) %}
+{% endfor %}
 {# Pre-icon-test installs have no record, so preserve pre-existing GTK settings. #}
 {% if icon_settings_owner_owned %}
   {% set text_targets = text_targets + [
@@ -316,11 +336,14 @@
     '/usr',
     '/usr/lib',
     '/usr/lib/user-tmpfiles.d',
+    '/usr/lib/systemd',
+    '/usr/lib/systemd/user',
     '/usr/share',
     '/usr/share/icons',
     '/usr/share/applications',
     desktop_home,
     desktop_home ~ '/.config',
+    night_config_dir,
     desktop_home ~ '/.config/i3',
     desktop_home ~ '/.config/rofi',
     desktop_home ~ '/.config/dunst',
@@ -408,6 +431,26 @@
       target_lstat.get('st_uid') != 0 or target_lstat.get('st_gid') != 0
       or target_lstat.get('st_nlink') != 1
       or salt['file.get_mode'](path) != '0644') %}
+    {% set collision.found = true %}
+  {% endif %}
+{% endfor %}
+
+{% for path, expected_mode in night_root_targets %}
+  {% set target_lstat = salt['file.lstat'](path) %}
+  {% if target_lstat|length > 0 and (
+      target_lstat.get('st_uid') != 0 or target_lstat.get('st_gid') != 0
+      or target_lstat.get('st_nlink') != 1
+      or salt['file.get_mode'](path) != expected_mode) %}
+    {% set collision.found = true %}
+  {% endif %}
+{% endfor %}
+{% for path, expected_mode in [(night_config_dir, '0700'), (night_config, '0644')] %}
+  {% set target_lstat = salt['file.lstat'](path) %}
+  {% if target_lstat|length > 0 and (
+      target_lstat.get('st_uid') != desktop_uid
+      or target_lstat.get('st_gid') != desktop_gid
+      or salt['file.get_mode'](path) != expected_mode
+      or (path == night_config and target_lstat.get('st_nlink') != 1)) %}
     {% set collision.found = true %}
   {% endif %}
 {% endfor %}
@@ -726,6 +769,68 @@ qubes_gui_hud_rollback_remove_autostart_helper:
     - name: {{ hud_autostart_helper }}
     - require:
       - cmd: qubes_gui_hud_rollback_accountsservice_session
+
+{# The user manager retains the display environment from HUD startup. Restore
+   saved output transforms before removing their controller or native units.
+   With no user bus there is no session service to stop. Keep the user directory
+   and runtime state; only its marked preferences file is removed below. #}
+qubes_gui_hud_rollback_stop_night_light:
+  cmd.run:
+    - name: /usr/bin/python3 -B {{ night_helper }} --stop
+    - runas: {{ desktop_user }}
+    - env:
+        XDG_RUNTIME_DIR: /run/user/{{ desktop_uid }}
+        DBUS_SESSION_BUS_ADDRESS: unix:path=/run/user/{{ desktop_uid }}/bus
+    - onlyif:
+      - /usr/bin/test -S /run/user/{{ desktop_uid }}/bus
+      - /usr/bin/test -f {{ night_helper }}
+    - require:
+      - file: qubes_gui_hud_rollback_remove_autostart_helper
+
+{% for asset, path in [('night_light_desktop', night_desktop),
+    ('night_light_config', night_config)] %}
+qubes_gui_hud_rollback_remove_{{ asset }}:
+  file.absent:
+    - name: {{ path }}
+    - require:
+      - cmd: qubes_gui_hud_rollback_stop_night_light
+{% endfor %}
+
+{% for unit, filename in night_units %}
+qubes_gui_hud_rollback_remove_night_light_{{ unit }}_unit:
+  file.absent:
+    - name: /usr/lib/systemd/user/{{ filename }}
+    - require:
+      - cmd: qubes_gui_hud_rollback_stop_night_light
+{% endfor %}
+
+qubes_gui_hud_rollback_reload_night_light_units:
+  cmd.run:
+    - name: /usr/bin/systemctl --user daemon-reload
+    - runas: {{ desktop_user }}
+    - env:
+        XDG_RUNTIME_DIR: /run/user/{{ desktop_uid }}
+        DBUS_SESSION_BUS_ADDRESS: unix:path=/run/user/{{ desktop_uid }}/bus
+    - onlyif: /usr/bin/test -S /run/user/{{ desktop_uid }}/bus
+    - onchanges:
+{% for unit, filename in night_units %}
+      - file: qubes_gui_hud_rollback_remove_night_light_{{ unit }}_unit
+{% endfor %}
+
+qubes_gui_hud_rollback_remove_night_light_helper:
+  file.absent:
+    - name: {{ night_helper }}
+    - require:
+      - cmd: qubes_gui_hud_rollback_stop_night_light
+      - cmd: qubes_gui_hud_rollback_reload_night_light_units
+      - file: qubes_gui_hud_rollback_remove_night_light_desktop
+      - file: qubes_gui_hud_rollback_remove_night_light_config
+
+qubes_gui_hud_rollback_remove_output_module:
+  file.absent:
+    - name: {{ output_module }}
+    - require:
+      - file: qubes_gui_hud_rollback_remove_night_light_helper
 
 qubes_gui_hud_rollback_remove_workspace_helper:
   file.absent:

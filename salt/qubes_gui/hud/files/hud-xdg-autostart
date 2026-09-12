@@ -116,6 +116,13 @@ if ! /usr/bin/systemd-tmpfiles --user --create \
     printf '%s\n' 'Qubes HUD: could not prepare native terminal runtime.' >&2
 fi
 
+# Schedule output filtering without delaying normal application startup.
+(
+    if ! /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-night-light --start; then
+        printf '%s\n' 'Qubes HUD: could not start the output night-light schedule.' >&2
+    fi
+) &
+
 # Prepare the native i3 layout before normal desktop autostart can add windows.
 # Repeated startup preserves an existing layout and the user's current focus.
 if ! /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-workspace; then

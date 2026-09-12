@@ -1,0 +1,11 @@
+# Qubes HUD managed file. Owner: salt/qubes_gui/hud.
+[Unit]
+Description=Check Qubes HUD output night-light schedule
+
+[Timer]
+OnActiveSec=1s
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+OnClockChange=true
+OnTimezoneChange=true
+Unit=qubes-hud-night-light.service
