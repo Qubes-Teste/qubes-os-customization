@@ -241,6 +241,50 @@ Qubes' default gui-daemon policy rejects
 untrusted AppVM fullscreen requests; override-redirect windows keep
 gui-daemon's protected label border.
 
+### Optional font trials
+
+The shared `qubes_gui.hud.font` state can select **Xolonium**, **Induction**,
+**Neuropol** or **Johnny Fever** in dom0 and supported guest templates. The
+original fonts remain the default unless a family is explicitly selected.
+The unchanged font files and their licenses are committed to this repository;
+installation is offline and adds no packages, compiled programs or runtime
+helpers. See the [font sources and licenses](salt/qubes_gui/hud/files/fonts/README.md).
+
+Start with Xolonium in dom0:
+
+```sh
+./scripts/sync-salt-formula.sh
+sudo qubesctl state.sls qubes_gui.hud.font saltenv=user test=True \
+  'pillar={"qubes_gui":{"hud":{"font":{"family":"Xolonium"}}}}'
+sudo qubesctl state.sls qubes_gui.hud.font saltenv=user \
+  'pillar={"qubes_gui":{"hud":{"font":{"family":"Xolonium"}}}}'
+```
+
+Change the family in the same command for the next trial. Fontconfig prefers
+the selected face for ordinary desktop font requests while retaining symbol
+fonts and missing-character fallbacks. These are proportional display fonts;
+terminals retain their fixed cell grid and may fit fewer columns.
+
+For a persistent guest selection, add `--skip-dom0 --targets=TEMPLATE` before
+`state.sls`, then shut down that template. Its dependent qubes inherit the
+selection when they next start. For a temporary preview in an already-running
+AppVM, use its exact name as the target and also set
+`"preview_qube":"NAME"` alongside `family`; this changes only its ephemeral
+root. The state never restarts applications or qubes. Restart applications to
+refresh their cached fonts; a new desktop login refreshes dom0 completely.
+
+In guests with ordinary Firefox already installed, a separate editable
+default disables website-chosen fonts so page text uses the selected system
+font. Restore website fonts with **Settings → General → Fonts → Advanced →
+Allow pages to choose their own fonts**. Existing user choices take precedence.
+Web icon fonts can be affected by disabling page fonts. Browser images and
+other text rendered as pixels cannot be changed by a font selection.
+
+Use `qubes_gui.hud.font-rollback` with the same pillar and target to remove the
+owned selector, browser font default and installed trial fonts. Existing
+distribution fonts and user browser choices are preserved. Omitting the
+family makes both states no-ops; it does not undo an installed selection.
+
 ## HUD application theme in TemplateVMs
 
 `qubes_gui.guest_hud` installs the application-facing HUD palette into a

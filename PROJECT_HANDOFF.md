@@ -2205,3 +2205,147 @@ The installed eight-default file remained unchanged. Evidence:
 `/tmp/hud-firefox-activation/independent-validation.json`. Only this handoff
 changed in the repository; the previously audited deployment entrypoints,
 dependencies and Salt states are unchanged.
+
+## Optional stock-rendered font trials (2026-09-13)
+
+The user selected four font trials in this order: Xolonium, Induction,
+Neuropol, Johnny Fever. The shared `qubes_gui.hud.font` state and its
+`font-rollback` alias are opt-in and no-op without an explicit family. Leave
+each trial visible for the user to judge before selecting the next; no
+automatic cycling or final favorite has been requested. Ordinary HUD Noto
+configuration remains intact and is resolved through the optional selector.
+
+The repository contains unchanged official Xolonium 4.3 Regular/Bold OTFs
+under SIL OFL 1.1 and the three requested Typodermic OTFs from their individual
+CC0 archives. Xolonium is openly licensed rather than public domain, and its
+license permits bundling. Original license/declaration files and provenance
+record upstream archive URLs, SHA-256 values and exact asset bytes. Johnny
+Fever's external filename uses a hyphen for the existing Salt sync path
+policy; its internal name and font bytes are unchanged. Git attributes retain
+the exact upstream font/license bytes, including the original CRLF license,
+across checkouts. Acquisition used
+HTTPS inside existing sys-net, followed by selective transfer. No deployment
+download, source build, conversion, package or runtime helper was added.
+
+Assets are staged by normal Qubes Salt `file.managed` transfer under the
+marked `/usr/share/qubes-hud-font-trial/<family-slug>` directory, outside
+Fontconfig's ordinary font directories. Native `file.file_exists` and
+`file.check_hash` checks form a runtime SHA-256 gate. Only after that gate
+passes does `/etc/fonts/conf.d/99-qubes-hud-font.conf` register the selected
+family's directory and strongly prepend its name to ordinary font requests.
+Symbol/emoji/icon requests and missing-character fallback remain available.
+The stock Fontconfig, FreeType, Pango, GTK, Qt, VTE, browser and i3 binaries
+render the fonts and retain their normal package updates. Hashes pin the
+supplied font bytes; they do not constitute a security audit of font data.
+
+All four fixed manifests and selectors are admitted for switching. Root and
+family directories, markers, font/license files and selector have bounded
+ownership, type, mode, link, content and SHA-256 guards. Unknown entries or
+modified files refuse the state. Existing verified assets use `replace:false`;
+apply also refuses a partially missing currently registered family so
+unverified replacements cannot become visible through its previous selector.
+Rollback accepts missing assets, removes the owned selector, browser default
+and installed fonts, runs native `fc-cache --force`, and retains the marked
+root and empty family directories. Unrelated fonts and user browser choices
+are preserved. Omitting the pillar does not undo an installed selection.
+The optional font state is independent of main HUD removal; use its rollback
+when returning to the original font selection.
+
+The same state supports Qubes 4.3 dom0 and Debian-family/Fedora TemplateVMs.
+An exact `preview_qube` name permits an AppVM's ephemeral root; normal template
+installation is the persistent guest route. Guests with ordinary distribution
+Firefox installed receive a separate guarded `qubes-hud-font.js` with the
+editable `browser.display.use_document_fonts=0` default. The cyan color file,
+profiles and Tor Browser installation are unchanged. Native Firefox Settings
+can re-enable page fonts, and existing user choices win. Disabling page fonts
+can affect web icon fonts; images and text drawn as pixels cannot be changed
+by font selection.
+
+These are proportional display faces. VTE retains its fixed cell grid, so
+spacing can widen and fewer columns fit. Applications cache fonts: a new
+login refreshes dom0, and an application restart refreshes its own selection.
+Salt never restarts applications or qubes. Immediate managed-viewer refreshes
+are maintenance actions, not new deployed runtime code; interactive terminal
+sessions are preserved until the user normally reopens them.
+
+### Validation
+
+Actual native testing resolved three Salt portability details: stock dom0's
+`/` is mode 0555; Qubes Salt SSH does not support the ad-hoc render-time transfer
+used by `cp.cache_file`; and `cmd.run` states already supply `python_shell`.
+The final state admits 0555 or 0755 only for `/`, uses normal bundled source
+transfer with the runtime hash gate, and executes a fixed cache command with
+no duplicate keyword. It does not rely on Salt's configured cache hash, which
+is MD5 here. Fresh `test=True` cannot hash files that have only been planned,
+so its gate is an explicit descriptive no-op; real apply checks the hashes
+before permitting the selector. Native execution proved that a bad hash or
+missing staged file blocks selector installation. No Internet access from
+dom0 is required.
+
+Private native Fontconfig/Pango tests selected Xolonium Regular and Bold for
+ordinary requests while retaining symbols and missing-glyph fallback. Fresh
+VTE uses stable 12×13-pixel cells at the existing 8-point request. Long-lived
+VTE kept its old 10-pixel width even after Xfce's native Fontconfig timestamp
+notification; managed viewers need replacement for a reliable immediate
+preview. In ordinary Firefox, a local four-row fixture rendered identical
+pixels for generic, explicit installed, embedded other-font and embedded
+Xolonium cases with the one preference. Extra language-family preferences
+proved unnecessary. All original browser processes survived these tests;
+temporary profiles/displays were cleaned up. Evidence is under
+`/tmp/qubes-hud-font-trial-test/`, including `summary.json` and
+`firefox-pixel-proof.json`.
+
+Native i3 tests proved replacement through explicitly matched placeholders
+and container swaps, including unequal column widths, preserving client order
+and outer geometry. Immediate dashboard refresh uses that maintenance
+technique for managed viewers and Qube Manager while preserving interactive
+terminals and unrelated windows. Temporary scripts and evidence are under
+`/tmp/hud-font-trial/`; none are deployment inputs. The superseded initial
+font-installation directory was rolled back and its empty owned marker/root
+removed before the final directory scheme was installed.
+
+### Live Xolonium trial
+
+Final native apply passed eight dom0 states and nine states in the exact
+`hud-test` AppVM preview. Both repeat applies passed with zero changes.
+Rollback previews passed eleven and twelve states respectively and changed
+nothing. Actual runtime-gate tests include eight isolated successful/failed
+hash and preview cases under `/tmp/hud-font-gate-native-artjpd4q/`; native
+final default/family renders and UpdateVM provider evidence are under
+`/tmp/hud-font-native-render-ozi7w5yh/`. The deployment entrypoint audit found
+no new dependencies, network fetch, build or runtime helper. The sole guest
+installation remains the ephemeral preview; no template has adopted a final
+font choice yet.
+
+Stock i3 was restarted to refresh frame/bar font caches. Seven managed dom0
+viewer/Manager processes were replaced and load the selected OTF files.
+Their XIDs can be reused by X11; process replacement and actual font mappings
+were verified independently. One transient geometry check ran before i3bar
+finished mapping; after the bar settled, all original outer geometry was
+restored. The exact eight-pane dashboard group retained its structure and
+its `qubes-hud-workspace` mark was restored. Interactive terminal sessions
+and unrelated applications were preserved. Their cached fonts can remain
+until those application processes are normally restarted.
+
+The screen locked during preparation. Lock processes remained intact through
+the i3 restart and initial managed-viewer refresh; the screen was later
+unlocked normally, with no unlock, password entry or lock termination by the
+agent. After unlock, Firefox's native About Profiles Restart normally control
+replaced main PID 12283 with 21023 and restored the original Google search tab.
+The two trial About Profiles tabs were closed. The replacement browser landed
+inside the terminal column, so native i3 commands moved it back to the left,
+restored its preset mark and 40% width, and returned the terminal/file columns
+to 30% each. This is the previously documented native browser-restart class
+and layout caveat, not a persistent layout change.
+
+Independent verification passed all fourteen original outer frames, six
+protected XIDs, available protected process identities, complete layout
+structure/marks, installed file hashes/permissions, native font selection in
+dom0 and hud-test, and actual Xolonium mappings in all seven refreshed dom0
+processes plus Firefox. Titlebars changed from 22 to 18 pixels, giving clients
+four more pixels of height within unchanged outer frames. Evidence is
+`/tmp/hud-font-trial/independent-validation.json`. Actual screenshots
+`bindings-xolonium-final.png` and `firefox-xolonium-loaded.png` show the selected
+face; the latter captures the completed cyan/black Google results page.
+Final focus is workspace 1 HUD Bindings. Xolonium remains selected; Induction,
+Neuropol and Johnny Fever are committed candidates awaiting successive trials.
