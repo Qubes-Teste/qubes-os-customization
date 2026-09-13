@@ -2356,7 +2356,7 @@ After a reboot, hud-test correctly lost its ephemeral Xolonium font files and
 Firefox font default. Native font matching and the running Thunar/Firefox
 process mappings confirmed a return to Noto. The user then chose to try the
 next font before deciding on persistent guest installation or a monospace
-terminal exception. **Induction is the current trial.** No TemplateVM font
+terminal exception. **Induction was selected for this trial (subsequently rejected below).** No TemplateVM font
 selection or terminal exception was added; hud-test remains a temporary
 AppVM preview and will lose this root change at its next restart.
 
@@ -2427,3 +2427,34 @@ nine catalog files match pinned hashes, sizes and root:root 0644 metadata;
 directories remain root:root 0755, and ordinary native font requests select
 Induction. Evidence: `/tmp/hud-font-reboot/independent-validation.json`.
 Final focus is workspace 1 HUD Bindings; workspace 2 retains the test apps.
+
+### Neuropol trial (2026-09-13)
+
+The user rejected Induction as unreadable and requested the next candidate.
+**Neuropol is now selected** in dom0 and the running hud-test preview; Johnny
+Fever is next if requested. The unchanged shared state passed all 17 dom0 and
+18 guest states, changing only the selector and native font cache on each
+target. No assets were reinstalled, and no dependency, runtime code, template
+font selection or terminal spacing exception was added.
+
+The seven managed dom0 viewers/Manager were refreshed with the existing
+maintenance procedure after stock i3's font-cache restart. Thunar's single
+home-folder window was normally restarted, retaining its frame and mark.
+Firefox's interface adopted Neuropol through the guest XSettings refresh,
+but the existing page used a fallback font even after reload. Its native
+About Profiles restart completed before the agent's guarded click (the old
+XID had already disappeared), replacing PID 5763 with 11245. The browser
+then rendered the original page in Neuropol. Its 40/30/30 layout and mark
+were restored; only the temporary About Profiles tab was closed.
+
+Independent verification preserved all fourteen original outer frames,
+ordered layouts/proportions, both workspace root marks, four qube leaf marks
+and the five protected interactive-terminal/Code XIDs. All seven refreshed
+dom0 processes plus Firefox and Thunar map Neuropol, and native font matching
+selects it in both targets. Evidence and screenshots are under
+`/tmp/hud-font-neuropol/`, including `independent-validation.json`,
+`bindings-neuropol.png`, `thunar-neuropol.png` and `firefox-neuropol.png`.
+Unchanged default apply/rollback renders and UpdateVM providers were verified
+in `/tmp/hud-neuropol-default-audit-xpobstfa/results.json`; deployment paths
+match the preceding audited commit. Final focus is workspace 1 HUD Bindings.
+The guest font selection remains ephemeral until a final font is chosen.
