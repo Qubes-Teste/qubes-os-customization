@@ -2349,3 +2349,81 @@ four more pixels of height within unchanged outer frames. Evidence is
 face; the latter captures the completed cyan/black Google results page.
 Final focus is workspace 1 HUD Bindings. Xolonium remains selected; Induction,
 Neuropol and Johnny Fever are committed candidates awaiting successive trials.
+
+### Induction trial and faster switching (2026-09-13)
+
+After a reboot, hud-test correctly lost its ephemeral Xolonium font files and
+Firefox font default. Native font matching and the running Thunar/Firefox
+process mappings confirmed a return to Noto. The user then chose to try the
+next font before deciding on persistent guest installation or a monospace
+terminal exception. **Induction is the current trial.** No TemplateVM font
+selection or terminal exception was added; hud-test remains a temporary
+AppVM preview and will lose this root change at its next restart.
+
+The shared state now stages all four committed families and their licenses
+on the first selected apply. Only the chosen directory is registered with
+Fontconfig. Later switches change the single `family` pillar, reuse the
+verified local assets, and update the selector/cache; no formula sync is
+needed unless repository inputs changed. All nine font/license paths must
+pass the existing runtime SHA-256 gate before selection. There is still no
+new runtime helper, package, network fetch or source build. Application
+refresh remains separate because live programs can retain font caches.
+
+Jinja guard checks now use native `file.lstat` type/mode fields and reuse
+metadata already read. Exact type, special-mode-bit, owner, link-count,
+size, content and hash checks remain equivalent. Root mode 0555 or 0755 is
+still allowed only for `/`; other directories require 0755 and files 0644.
+Previously generated selectors remain byte-identical and accepted. A
+partially missing active family still refuses apply; rollback still accepts
+missing assets. Full-catalog file-function calls fall from 109 to 39, reducing
+Qubes Salt SSH render overhead. Independent review passed 99 old/new render
+comparisons and eight actual native metadata cases; 20 native renders cover
+all four choices, default no-op and rollback. Evidence is under
+`/tmp/hud-font-prestage-render-b7zvop7t/`,
+`/tmp/hud-font-catalog-audit-tk5rwoj6/` and
+`/tmp/hud-font-catalog-audit-f39i8g71/`.
+
+Actual all-family installation passed 17 dom0 and 18 hud-test states. Repeat
+applies passed with zero changes. The default dom0 preview remains a single
+no-op. Rollback previews passed eleven dom0 and twelve guest states without
+removing files. Live Salt evidence is `/tmp/hud-font-reboot/salt-summary.json`.
+The deployment audit covered 87 files and 15 script entrypoints with
+no new dependencies or deployment network/build commands. Native package
+install, refresh and removal still resolve to `qubes_dom0_update`; provider
+evidence is `/tmp/hud-font-final-provider-6ucw5qsr/results.json`.
+
+Stock i3 was restarted to refresh frame/bar fonts, then the seven managed
+dom0 viewers/Manager were replaced using native matched placeholders and
+container swaps. Interactive terminals and unrelated applications were
+preserved. Firefox's native About Profiles restart replaced PID 918 with
+5763; its original Google results tab was retained, and the browser's preset
+mark and 40/30/30 column proportions were restored. Thunar's existing single
+`/home/user` window required a normal application restart to discard its
+cached Noto rendering; its folder, preset mark and outer frame were retained.
+Refreshing the guest XSettings daemon alone had not refreshed Thunar. No
+profile font preference, template, user terminal command or persistent
+workspace configuration was changed for activation.
+
+Screenshots in `/tmp/hud-font-reboot/` include `bindings-induction.png`,
+`thunar-induction.png` and `firefox-induction-page.png`; each visibly renders
+Induction, including the existing browser page. Native process mappings
+provide a separate check of the loaded OTF. Temporary maintenance scripts in
+that directory are not deployment inputs.
+
+Induction has especially wide glyphs. Private native VTE measurement gives
+18x14-pixel cells at the existing 8-point request, versus Xolonium's 12x13;
+at 10 points the widths are 22 versus 15 pixels. VTE uses the widest ASCII
+glyph for its fixed grid, and its stock cell-width scale has a minimum of
+1.0. This is inherent proportional-font spacing, not an extra configured
+tracking value. No spacing workaround was applied while comparing the
+requested fonts. Evidence: `/tmp/hud-font-spacing-check/induction-comparison.json`.
+Neuropol and Johnny Fever remain ready for later user-requested trials.
+
+Final independent validation preserved all fourteen original outer frames,
+ordered workspace structure/proportions, both preset group marks, and the five
+protected original XIDs (four interactive terminals and Code). All seven
+refreshed dom0 processes plus Firefox and Thunar map Induction. Both targets'
+nine catalog files match pinned hashes, sizes and root:root 0644 metadata;
+directories remain root:root 0755, and ordinary native font requests select
+Induction. Evidence: `/tmp/hud-font-reboot/independent-validation.json`.
+Final focus is workspace 1 HUD Bindings; workspace 2 retains the test apps.

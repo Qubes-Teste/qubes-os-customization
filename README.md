@@ -260,7 +260,10 @@ sudo qubesctl state.sls qubes_gui.hud.font saltenv=user \
   'pillar={"qubes_gui":{"hud":{"font":{"family":"Xolonium"}}}}'
 ```
 
-Change the family in the same command for the next trial. Fontconfig prefers
+The first apply stages and verifies all four bundled families. Change only
+`family` in the same command for the next trial; subsequent switches reuse
+those files and update the selector and native font cache. No formula sync
+is needed between trials unless repository files changed. Fontconfig prefers
 the selected face for ordinary desktop font requests while retaining symbol
 fonts and missing-character fallbacks. These are proportional display fonts;
 terminals retain their fixed cell grid and may fit fewer columns.

@@ -84,12 +84,13 @@ qubes_gui_hud_font_unknown:
     and grains.get('virtual_subtype') == 'Xen Dom0'
     and (release == '4.3' or release.startswith('4.3.')) %}
 {% set qubesdb = '/usr/bin/qubesdb-read' %}
+{% set has_qubesdb = not dom0 and salt['file.file_exists'](qubesdb) %}
 {% set vm_type = salt['cmd.run'](qubesdb ~ ' /qubes-vm-type',
     python_shell=false, ignore_retcode=true)|trim
-    if not dom0 and salt['file.file_exists'](qubesdb) else '' %}
+    if has_qubesdb else '' %}
 {% set vm_name = salt['cmd.run'](qubesdb ~ ' /name',
     python_shell=false, ignore_retcode=true)|trim
-    if preview_qube and not dom0 and salt['file.file_exists'](qubesdb) else '' %}
+    if preview_qube and has_qubesdb else '' %}
 {% set guest = grains.get('virtual', '')|lower == 'xen'
     and (grains.get('os_family') == 'Debian' or grains.get('os') == 'Fedora')
     and ((not preview_qube and vm_type == 'TemplateVM')
@@ -99,26 +100,26 @@ qubes_gui_hud_font_target_refused:
   test.fail_without_changes:
     - name: Select Qubes 4.3 dom0, a supported TemplateVM, or an explicitly named AppVM preview.
 {% else %}
-{% set safe = namespace(value=true) %}
+{# Native lstat st_mode includes type and special bits: directory 0755=16877,
+   directory 0555=16749, regular file 0644=33188. Exact equality also rejects
+   symlinks, devices, sockets and special permission bits in one local check. #}
+{% set safe = namespace(value=true, files={}) %}
 {% for path in ['/', '/usr', '/usr/share', '/etc', '/etc/fonts', '/etc/fonts/conf.d'] %}
   {% set st = salt['file.lstat'](path) %}
-  {% if not st or not salt['file.directory_exists'](path) or salt['file.is_link'](path)
-      or st.get('st_uid') != 0 or st.get('st_gid') != 0
-      or salt['file.get_mode'](path) not in (['0555', '0755'] if path == '/' else ['0755']) %}
+  {% if not st or st.get('st_uid') != 0 or st.get('st_gid') != 0
+      or st.get('st_mode') not in ([16749, 16877] if path == '/' else [16877]) %}
     {% set safe.value = false %}
   {% endif %}
 {% endfor %}
 {% set root_stat = salt['file.lstat'](font_root) if safe.value else {} %}
-{% if root_stat and (not salt['file.directory_exists'](font_root)
-    or salt['file.is_link'](font_root) or root_stat.get('st_uid') != 0
-    or root_stat.get('st_gid') != 0 or salt['file.get_mode'](font_root) != '0755') %}
+{% if root_stat and (root_stat.get('st_mode') != 16877 or root_stat.get('st_uid') != 0
+    or root_stat.get('st_gid') != 0) %}
   {% set safe.value = false %}
 {% endif %}
 {% if root_stat and safe.value %}
   {% set st = salt['file.lstat'](owner_file) %}
-  {% if not st or not salt['file.file_exists'](owner_file) or salt['file.is_link'](owner_file)
-      or st.get('st_uid') != 0 or st.get('st_gid') != 0 or st.get('st_nlink') != 1
-      or salt['file.get_mode'](owner_file) != '0644' or st.get('st_size') != owner_text|length
+  {% if not st or st.get('st_mode') != 33188 or st.get('st_uid') != 0
+      or st.get('st_gid') != 0 or st.get('st_nlink') != 1 or st.get('st_size') != owner_text|length
       or salt['file.read'](owner_file) != owner_text %}
     {% set safe.value = false %}
   {% endif %}
@@ -131,8 +132,7 @@ qubes_gui_hud_font_target_refused:
     {% set path = font_root ~ '/' ~ directory %}
     {% set st = salt['file.lstat'](path) %}
     {% if st %}
-      {% if not salt['file.directory_exists'](path) or salt['file.is_link'](path)
-          or st.get('st_uid') != 0 or st.get('st_gid') != 0 or salt['file.get_mode'](path) != '0755' %}
+      {% if st.get('st_mode') != 16877 or st.get('st_uid') != 0 or st.get('st_gid') != 0 %}
         {% set safe.value = false %}
       {% else %}
         {% for filename in salt['file.readdir'](path) %}
@@ -148,29 +148,29 @@ qubes_gui_hud_font_target_refused:
   {% for name, asset in known.files.items() %}
     {% set path = font_root ~ '/' ~ name %}
     {% set st = salt['file.lstat'](path) %}
-    {% if st and (not salt['file.file_exists'](path) or salt['file.is_link'](path)
-        or st.get('st_uid') != 0 or st.get('st_gid') != 0 or st.get('st_nlink') != 1
-        or salt['file.get_mode'](path) != '0644' or st.get('st_size') != asset[2]
+    {% do safe.files.update({name: st}) %}
+    {% if st and (st.get('st_mode') != 33188 or st.get('st_uid') != 0
+        or st.get('st_gid') != 0 or st.get('st_nlink') != 1 or st.get('st_size') != asset[2]
         or salt['file.get_hash'](path, 'sha256') != asset[1]) %}
       {% set safe.value = false %}
     {% endif %}
   {% endfor %}
   {% set st = salt['file.lstat'](selector) %}
-  {% if st and (not salt['file.file_exists'](selector) or salt['file.is_link'](selector)
-      or st.get('st_uid') != 0 or st.get('st_gid') != 0 or st.get('st_nlink') != 1
-      or salt['file.get_mode'](selector) != '0644' or st.get('st_size', 0) > 8192
-      or salt['file.read'](selector) not in known.selectors) %}
-    {% set safe.value = false %}
-  {% endif %}
-  {% if st and safe.value and not rollback %}
-    {% set active_selector = salt['file.read'](selector) %}
-    {% for name, files in fonts.items() if active_selector == font_config(name) ~ '\n' %}
-      {% for filename in files %}
-        {% if not salt['file.file_exists'](font_root ~ '/' ~ directories[name] ~ '/' ~ filename) %}
-          {% set safe.value = false %}
-        {% endif %}
+  {% if st %}
+    {% if st.get('st_mode') != 33188 or st.get('st_uid') != 0 or st.get('st_gid') != 0
+        or st.get('st_nlink') != 1 or st.get('st_size', 0) > 8192 %}
+      {% set safe.value = false %}
+    {% else %}
+      {% set active_selector = salt['file.read'](selector) %}
+      {% if active_selector not in known.selectors %}{% set safe.value = false %}{% endif %}
+      {% for name, files in fonts.items() if not rollback and active_selector == font_config(name) ~ '\n' %}
+        {% for filename in files %}
+          {% if not safe.files.get(directories[name] ~ '/' ~ filename) %}
+            {% set safe.value = false %}
+          {% endif %}
+        {% endfor %}
       {% endfor %}
-    {% endfor %}
+    {% endif %}
   {% endif %}
 {% endif %}
 {# Ordinary distribution Firefox only; never enter Tor Browser or a profile. #}
@@ -181,19 +181,18 @@ qubes_gui_hud_font_target_refused:
 {% set browser = namespace(enabled=false) %}
 {% if guest and safe.value %}
   {% set installed = salt['pkg.version'](package) if not rollback else '' %}
-  {% set browser.enabled = installed or salt['file.lstat'](browser_pref) %}
+  {% set browser_stat = salt['file.lstat'](browser_pref) %}
+  {% set browser.enabled = installed or browser_stat %}
   {% if browser.enabled %}
     {% for path in [libdir, browser_root, browser_root ~ '/defaults', browser_root ~ '/defaults/pref'] %}
       {% set st = salt['file.lstat'](path) %}
-      {% if not st or not salt['file.directory_exists'](path) or salt['file.is_link'](path)
-          or st.get('st_uid') != 0 or st.get('st_gid') != 0 or salt['file.get_mode'](path) != '0755' %}
+      {% if not st or st.get('st_mode') != 16877 or st.get('st_uid') != 0 or st.get('st_gid') != 0 %}
         {% set safe.value = false %}
       {% endif %}
     {% endfor %}
-    {% set st = salt['file.lstat'](browser_pref) if safe.value else {} %}
-    {% if st and (not salt['file.file_exists'](browser_pref) or salt['file.is_link'](browser_pref)
-        or st.get('st_uid') != 0 or st.get('st_gid') != 0 or st.get('st_nlink') != 1
-        or salt['file.get_mode'](browser_pref) != '0644' or st.get('st_size') != browser_text|length
+    {% set st = browser_stat if safe.value else {} %}
+    {% if st and (st.get('st_mode') != 33188 or st.get('st_uid') != 0
+        or st.get('st_gid') != 0 or st.get('st_nlink') != 1 or st.get('st_size') != browser_text|length
         or salt['file.read'](browser_pref) != browser_text) %}
       {% set safe.value = false %}
     {% endif %}
@@ -259,18 +258,20 @@ qubes_gui_hud_font_owner:
     - mode: '0644'
     - dir_mode: '0755'
     - makedirs: true
-qubes_gui_hud_font_directory:
+{% for directory in directories.values() %}
+qubes_gui_hud_font_directory_{{ directory }}:
   file.directory:
-    - name: {{ font_root }}/{{ directories[family] }}
+    - name: {{ font_root }}/{{ directory }}
     - user: root
     - group: root
     - mode: '0755'
     - require:
       - file: qubes_gui_hud_font_owner
-{% for name, asset in fonts[family].items() %}
+{% endfor %}
+{% for name, asset in known.files.items() %}
 qubes_gui_hud_font_asset_{{ loop.index }}:
   file.managed:
-    - name: {{ font_root }}/{{ directories[family] }}/{{ name }}
+    - name: {{ font_root }}/{{ name }}
     - source: salt://qubes_gui/hud/files/fonts/{{ asset[0] }}
     - user: root
     - group: root
@@ -278,7 +279,7 @@ qubes_gui_hud_font_asset_{{ loop.index }}:
     - makedirs: false
     - replace: false
     - require:
-      - file: qubes_gui_hud_font_directory
+      - file: qubes_gui_hud_font_directory_{{ name.split('/')[0] }}
 {% endfor %}
 qubes_gui_hud_font_hashes:
 {% if opts.get('test', false) %}
@@ -289,16 +290,16 @@ qubes_gui_hud_font_hashes:
     - name: Font assets must match their pinned SHA-256 before Fontconfig can load them.
 {% endif %}
     - require:
-{% for name in fonts[family] %}
+{% for name in known.files %}
       - file: qubes_gui_hud_font_asset_{{ loop.index }}
 {% endfor %}
 {% if not opts.get('test', false) %}
     - unless:
-{% for name, asset in fonts[family].items() %}
+{% for name, asset in known.files.items() %}
       - fun: file.file_exists
-        path: {{ font_root }}/{{ directories[family] }}/{{ name }}
+        path: {{ font_root }}/{{ name }}
       - fun: file.check_hash
-        path: {{ font_root }}/{{ directories[family] }}/{{ name }}
+        path: {{ font_root }}/{{ name }}
         file_hash: sha256={{ asset[1] }}
 {% endfor %}
 {% endif %}
@@ -329,7 +330,7 @@ qubes_gui_hud_font_cache:
     - name: /usr/bin/fc-cache --force
     - onchanges:
       - file: qubes_gui_hud_font_selector
-{% for name in fonts[family] %}
+{% for name in known.files %}
       - file: qubes_gui_hud_font_asset_{{ loop.index }}
 {% endfor %}
 {% endif %}
