@@ -2431,8 +2431,8 @@ Final focus is workspace 1 HUD Bindings; workspace 2 retains the test apps.
 ### Neuropol trial (2026-09-13)
 
 The user rejected Induction as unreadable and requested the next candidate.
-**Neuropol is now selected** in dom0 and the running hud-test preview; Johnny
-Fever is next if requested. The unchanged shared state passed all 17 dom0 and
+**Neuropol was selected** in dom0 and the running hud-test preview. The user
+subsequently kept it as a top candidate and requested Johnny Fever below. The unchanged shared state passed all 17 dom0 and
 18 guest states, changing only the selector and native font cache on each
 target. No assets were reinstalled, and no dependency, runtime code, template
 font selection or terminal spacing exception was added.
@@ -2458,3 +2458,32 @@ Unchanged default apply/rollback renders and UpdateVM providers were verified
 in `/tmp/hud-neuropol-default-audit-xpobstfa/results.json`; deployment paths
 match the preceding audited commit. Final focus is workspace 1 HUD Bindings.
 The guest font selection remains ephemeral until a final font is chosen.
+
+### Johnny Fever trial (2026-09-13)
+
+The user retained **Neuropol as a top candidate** and requested the last font.
+**Johnny Fever is now selected** in dom0 and the running hud-test preview.
+Induction remains rejected; no final favorite or template-wide installation
+has been requested. All four committed candidates remain available locally.
+
+The unchanged shared state passed 17 dom0 and 18 guest states, changing only
+the selector and native cache. The seven managed dom0 viewers/Manager and
+Thunar were refreshed using the existing maintenance procedure. Firefox's
+native restart completed before the agent's guarded click, replacing PID
+11245 with 13037. Its existing Woxikon page visibly renders Johnny Fever;
+the original two tabs remain and the temporary About Profiles tab is gone.
+Thunar remains in its original home-folder view, now PID 12990. The browser's
+40/30/30 layout and marks were restored after its native restart.
+
+Independent validation preserved all fourteen outer frames, ordered workspace
+layouts/proportions, both root marks, four qube leaf marks and five protected
+interactive-terminal/Code XIDs. All nine refreshed applications map the
+committed Johnny-Fever.otf, and native matching selects Johnny Fever in both
+targets. Evidence and screenshots are in `/tmp/hud-font-johnny-fever/`,
+including `independent-validation.json`, `bindings-johnny-fever.png`,
+`thunar-johnny-fever.png` and `firefox-johnny-fever.png`. Deployment files are
+unchanged from `099b964`; their matching hashes retain the preceding native
+default-render and UpdateVM-provider evidence, recorded in
+`/tmp/hud-font-johnny-fever-preflight.json`. No runtime code, dependency or
+terminal spacing exception changed. Final focus is workspace 1 HUD Bindings;
+the guest selection remains ephemeral while the user compares candidates.
