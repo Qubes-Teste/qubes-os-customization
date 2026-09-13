@@ -39,8 +39,9 @@ cyan glyphs on exact-black canvases for reliable XEmbed rendering.
 The outer Qubes frame, rounded clipping, label-colored window title, transparency,
 blur, and glow remain in dom0. Installing a compositor or window manager in a
 TemplateVM would not improve seamless guest windows and is intentionally out
-of scope. Browser page content, Electron interfaces, and applications that
-draw their own complete interface are also separate work. Absolute application
+of scope. Ordinary Firefox page content has a separate opt-in state described
+below. Electron interfaces and applications that draw their own complete
+interface remain separate work. Absolute application
 icon paths, thumbnails, tray images, `_NET_WM_ICON` title-bar images, and other
 client-provided pixels likewise bypass freedesktop icon-theme lookup and are
 not recolored by this test. The six package-owned images selected by Sdwdate's
@@ -175,3 +176,84 @@ sudo qubesctl --skip-dom0 --targets=debian-13-xfce \
 
 Dependent qubes pick up either change at their next restart; the state does not
 restart them automatically.
+
+## Optional Firefox page colors
+
+Apply `qubes_gui.guest_hud.firefox` separately to select cyan-on-black page
+colors in an ordinary, already-installed distribution Firefox. It supports
+Debian-family `firefox-esr` and Fedora's x86-64 `firefox` installation layout.
+It does not install Firefox, change Tor Browser, merge enterprise policies,
+write profile files, or add executable runtime code. The regular guest-theme
+state and template-provisioning wrapper do not enable this option implicitly.
+
+```sh
+./scripts/sync-salt-formula.sh
+sudo qubesctl --skip-dom0 --targets=debian-13-xfce \
+  state.sls qubes_gui.guest_hud.firefox saltenv=user test=True
+sudo qubesctl --skip-dom0 --targets=debian-13-xfce \
+  state.sls qubes_gui.guest_hud.firefox saltenv=user
+sudo qvm-shutdown --wait debian-13-xfce
+```
+
+Dependent qubes receive the template root on their next start. Native Firefox
+loads the eight editable defaults in `defaults/pref/qubes-hud.js` below
+`/usr/lib/firefox-esr` (Debian) or `/usr/lib64/firefox` (Fedora). This is
+Firefox's restricted preference-file format, not AutoConfig JavaScript.
+The state verifies the installed package, package-owned `channel-prefs.js`,
+real root-owned parent directories and the exact owned drop-in. It refuses
+unfamiliar, modified, linked or package-owned destination files. It neither
+creates shared directories nor overwrites vendor configuration.
+
+In Firefox 140 ESR, use **Settings → General → Contrast Control**:
+
+- **Custom**: cyan `#19d3ff` text on black, with brighter cyan links and
+  dimmer visited links.
+- **Off**: allow website colors again, keeping the native dark appearance
+  hint. This is the normal color rendering toggle.
+
+These are default preferences, not locks. Existing profile values or
+enterprise locks win, and a user's Off/Custom choice persists across Salt
+reapplies. The dark appearance hint remains active when forced colors are
+off. The switch changes page colors immediately; installing or removing the
+system preference file requires Firefox to restart.
+For a normal session-preserving restart, open `about:profiles` and choose
+**Restart normally** when ready.
+
+The native [Contrast Control](https://support.mozilla.org/en-US/kb/firefox-contrast-control)
+mode recolors text, backgrounds and links, and may simplify shadows or
+gradients. Images, video, canvas pixels and elements using
+`forced-color-adjust: none` retain their colors. Firefox's own controls and
+internal pages can differ from web content; this is not a display-wide color
+filter. Browser controls get Firefox's native dark hint and toolkit colors,
+without maintained `userChrome.css` selectors.
+
+For a temporary preview in an **already-running** AppVM, supply its exact
+QubesDB name explicitly; use `test=True` first:
+
+```sh
+sudo qubesctl --skip-dom0 --targets=hud-test \
+  state.sls qubes_gui.guest_hud.firefox saltenv=user \
+  'pillar={"qubes_gui":{"guest_hud":{"firefox":{"preview_qube":"hud-test"}}}}'
+```
+
+Restart Firefox to load the preview. This modifies only the AppVM's ephemeral
+root and disappears when that qube restarts; a persistent installation must
+also apply the normal TemplateVM state above. Neither path stops browsers
+or dependent qubes automatically. Without the explicit matching preview name,
+the state refuses AppVMs, as well as dom0 and unsupported platforms.
+
+Rollback uses the same guards and removes only the exact owned drop-in:
+
+```sh
+sudo qubesctl --skip-dom0 --targets=debian-13-xfce \
+  state.sls qubes_gui.guest_hud.firefox-rollback saltenv=user test=True
+sudo qubesctl --skip-dom0 --targets=debian-13-xfce \
+  state.sls qubes_gui.guest_hud.firefox-rollback saltenv=user
+sudo qvm-shutdown --wait debian-13-xfce
+```
+
+For a live preview, use the AppVM target and its same `preview_qube` pillar.
+Rollback preserves every profile preference, including choices made through
+Firefox after installation. Such explicit choices can remain effective after
+removal; use Firefox's own Off switch to disable recoloring. Main guest-theme
+rollback is independent, so remove this optional state separately when desired.

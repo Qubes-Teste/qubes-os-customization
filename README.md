@@ -303,3 +303,33 @@ re-clone it or claim that it came from the newly supplied source. Choose a new
 target name when changing source templates. See
 `salt/qubes_gui/guest_hud/README.md` for the exact scope, collision policy,
 validation, and rollback.
+
+### Optional Firefox page colors
+
+The separate `qubes_gui.guest_hud.firefox` state gives ordinary Firefox cyan
+text and links on black pages, with a native dark appearance hint. Toggle
+page recoloring in **Settings → General → Contrast Control → Off / Custom**.
+This uses eight editable Firefox preferences; no extension, custom binary,
+package or runtime helper is added. Existing user choices take precedence,
+and a toggle choice survives both Firefox restarts and Salt reapplies.
+
+```sh
+./scripts/sync-salt-formula.sh
+sudo qubesctl --skip-dom0 --targets=debian-13-xfce \
+  state.sls qubes_gui.guest_hud.firefox saltenv=user test=True
+sudo qubesctl --skip-dom0 --targets=debian-13-xfce \
+  state.sls qubes_gui.guest_hud.firefox saltenv=user
+sudo qvm-shutdown --wait debian-13-xfce
+```
+
+Selected TemplateVMs must already contain the distribution's Firefox package.
+Dependent qubes inherit these defaults when they next start. Images, video,
+canvas content and elements that explicitly opt out retain their colors.
+Firefox controls receive a native dark appearance hint; existing theme choices
+still take precedence.
+Tor Browser's separate installation is not changed.
+
+Use `qubes_gui.guest_hud.firefox-rollback` with the same target to remove the
+owned preferences file, then shut down the template. See the
+[guest theme instructions](salt/qubes_gui/guest_hud/README.md#optional-firefox-page-colors)
+for a temporary preview in a running AppVM and rollback details.

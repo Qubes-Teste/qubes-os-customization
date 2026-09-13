@@ -2069,3 +2069,113 @@ Picom retains its compositor selection, and the captured solid `#030b12`
 surface is i3lock above those frames. The lock, input and display power state
 were left intact. Workspace 2 is selected behind the lock and ready for the
 user's normal unlock; there was no compositor restart or screenshot repair.
+
+## Optional native Firefox cyan page colors (2026-09-13)
+
+The user requested that ordinary Firefox render most content cyan on black,
+with a toggle. The separate `qubes_gui.guest_hud.firefox` state supplies
+eight editable defaults through the stock browser's restricted preference
+loader. It adds no extension, package, custom binary, AutoConfig script,
+runtime helper, profile file or enterprise-policy merge. This remains an
+opt-in state; ordinary guest-theme installation and template provisioning do
+not implicitly enable it. Tor Browser's separate installation is untouched.
+
+The owned file is `/usr/lib/firefox-esr/defaults/pref/qubes-hud.js` for
+Debian-family templates and `/usr/lib64/firefox/defaults/pref/qubes-hud.js`
+for Fedora's ordinary x86-64 Firefox layout. Native GRE preference loading
+reads that directory even when the application uses `omni.ja`. Debian's
+older `/etc/firefox-esr/*.js` mechanism is deliberately avoided: its current
+ESR package has a reported loading regression. Application-local defaults
+also avoid the broader `/etc/firefox` scope used by some Firefox forks.
+Relevant upstream references are Mozilla's
+[preference-file format](https://firefox-source-docs.mozilla.org/modules/libpref/index.html#preference-values),
+[Contrast Control](https://support.mozilla.org/en-US/kb/firefox-contrast-control),
+and [Debian's ESR loading report](https://bugs.debian.org/1121823).
+
+`browser.display.document_color_use=2` selects Firefox's native Custom
+Contrast Control. Text is `#19d3ff` on `#000000`, unvisited links `#7ae9ff`,
+visited links `#1493b3`, and active links `#b3f3ff`. The two remaining defaults
+request dark page appearance and supply the native system-dark-theme hint.
+No `.dark` palette duplicates are needed: ESR 140's explicit forced-color
+mode selects its ordinary preference palette. This recolors text, backgrounds
+and links; images, video, canvas pixels and `forced-color-adjust: none`
+elements retain their colors. Firefox chrome and internal pages have their
+own behavior, and existing explicitly selected browser themes can override
+the dark hint. No maintained browser CSS selectors are introduced.
+
+On the installed Firefox 140 ESR, **Settings → General → Contrast Control →
+Off / Custom** is the native live toggle. Off writes color-use `1`; Custom
+writes `2`. These defaults are unlocked: existing user or policy values win,
+and user toggle choices survive Salt reapplies. Installing/removing the file
+requires a Firefox process restart; the toggle itself takes effect live.
+Rollback removes only the exact owned drop-in and preserves user choices,
+which may therefore remain effective after removal.
+
+Normal deployment targets a selected TemplateVM with Firefox already
+installed, then shuts it down to commit its root. Dependent qubes inherit
+changes on their next start and are never restarted by this state. An
+explicit `qubes_gui:guest_hud:firefox:preview_qube` matching QubesDB `/name`
+allows the same file in an already-running AppVM's ephemeral root. This
+preview is not a substitute for template deployment and does not write
+`/home`, `/rw` or `/usr/local`. Both paths and their matching
+`firefox-rollback` commands are documented in the guest-theme README.
+
+Apply and rollback share guards for Qubes type/name, supported OS, real
+root-owned 0755 parents, a regular root:root 0644 destination with one link,
+bounded exact contents, and absence of package ownership. Apply additionally
+requires the installed Firefox package and its owned `channel-prefs.js`.
+No shared directories are created or removed. The first native preview
+exposed that Salt's `pkg.owner` leaves retcode 1 for an unowned Debian path,
+which the Qubes SSH wrapper promotes to a render exception. Fixed-argument
+native `dpkg-query`/`rpm` queries now use `cmd.run_all` with
+`python_shell=False`, `ignore_retcode=True` and explicit result validation.
+The queries are read-only package-database operations, not package fetches.
+
+### Validation
+
+Native rendering with default settings correctly refuses dom0 for both new
+states. All 200 bounded Debian/Fedora apply/rollback guard fixtures pass.
+An audit of 73 deployment files and 15 executable entrypoints found no new
+dependency, download, build, binary or generated cache. Native dom0 package
+install/refresh/remove still resolve to `qubes_dom0_update`; the existing
+explicit direct-DNF maintainer override remains separate and opt-in.
+Evidence: `/tmp/hud-firefox-salt-check-tibt4tzj/results.json`. Fedora paths
+were rendered and checked with fixtures, not visually tested in a live
+Fedora TemplateVM.
+
+Actual stock Firefox 140.15.0esr in the already-running `hud-test` passed
+five isolated headless rendering phases: baseline, installed system defaults,
+native Off preference, native Custom preference, and fresh profile after
+Salt rollback. A local HTML fixture proved exact black backgrounds,
+`#19d3ff` text and `#7ae9ff` links. Off and post-rollback screenshots matched
+baseline byte-for-byte; Custom matched system defaults byte-for-byte.
+Raster images, canvas and CSS opt-out regions retained their original pixels
+in every phase. This proves preference behavior, not a live click on the
+Settings control. That control's mapping was checked in the installed ESR
+source. All ten original Firefox processes survived every phase, and every
+owned headless process, temporary guest profile and fixture was removed.
+Test inputs used only local files and temporary test profiles, with proxy
+settings blocking browser background HTTP/HTTPS. Evidence and screenshots
+remain under `/tmp/qubes-hud-firefox-colors/`, including `summary.json` and
+`cleanup.json`. No existing user profile was edited.
+
+The native Qubes Salt dry runs planned exactly one preference file in each
+of `hud-test` (explicit preview pillar) and `debian-13-xfce` (normal template
+scope). Template apply succeeded and repeat apply reported zero changes;
+the template is halted again. This persistent root change will reach its
+other dependent qubes at their next normal start. No dependent qube,
+ordinary browser session, service VM, compositor or window manager was
+restarted during the change. The user's existing Firefox process still has
+its earlier settings until a normal restart. Firefox's `about:profiles` →
+**Restart normally** provides the native session-restoring route; its restart
+arguments preserve the workspace preset's `--class HudQubeBrowser` selection.
+That restart path was checked in ESR source, not executed against the user's
+active browser. The live preview avoids requiring a whole-qube restart just
+to see the new defaults.
+
+After rollback testing, the explicit live `hud-test` preview was reapplied;
+its repeat apply also reported zero changes. Its installed preference file
+matches the repository byte-for-byte. Native apply/preview/rollback evidence
+is under `/tmp/hud-firefox-deploy/`. The final state is an installed template
+default plus the same ephemeral preview in the running test qube, with the
+user's active browser awaiting its normal restart.
