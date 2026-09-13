@@ -2165,17 +2165,43 @@ scope). Template apply succeeded and repeat apply reported zero changes;
 the template is halted again. This persistent root change will reach its
 other dependent qubes at their next normal start. No dependent qube,
 ordinary browser session, service VM, compositor or window manager was
-restarted during the change. The user's existing Firefox process still has
-its earlier settings until a normal restart. Firefox's `about:profiles` →
-**Restart normally** provides the native session-restoring route; its restart
-arguments preserve the workspace preset's `--class HudQubeBrowser` selection.
-That restart path was checked in ESR source, not executed against the user's
-active browser. The live preview avoids requiring a whole-qube restart just
-to see the new defaults.
+restarted during the initial installation. The user's existing Firefox
+process retained its earlier settings until the separately authorized restart
+below. Firefox's `about:profiles` → **Restart normally** provides the native
+session-restoring route. Initial source inspection suggested that it would
+preserve the startup class argument; actual installed-package behavior below
+supersedes that inference. The live preview avoids requiring a whole-qube
+restart just to see the new defaults.
 
 After rollback testing, the explicit live `hud-test` preview was reapplied;
 its repeat apply also reported zero changes. Its installed preference file
 matches the repository byte-for-byte. Native apply/preview/rollback evidence
 is under `/tmp/hud-firefox-deploy/`. The final state is an installed template
 default plus the same ephemeral preview in the running test qube, with the
-user's active browser awaiting its normal restart.
+user's active browser initially awaiting its normal restart.
+
+### Live browser activation (2026-09-13)
+
+The user explicitly requested restarting the current Firefox on workspace 2.
+The native About Profiles **Restart normally** control replaced main PID 916
+with 12283 and restored the existing search tab. The live page visibly renders
+cyan text and links on black; the screenshot is
+`/tmp/hud-firefox-activation/active-page-final.png`. No browser profile
+configuration or additional package was changed.
+
+The installed Debian browser's native restart dropped `--class HudQubeBrowser`:
+its new trusted dom0 class is `hud-test:firefox-esr`. It stayed on workspace 2,
+but i3 rebalanced the three columns after the old client disappeared. Native
+i3 commands restored the browser's existing preset mark and 40% width; the
+two terminal and file-manager columns returned to 30% each. This is a known
+manual-browser-restart layout caveat, not a change to the persistent preset.
+A normal future qube start still invokes the committed XDG autostart command
+with its custom class. The activation evidence is under
+`/tmp/hud-firefox-activation/`; the earlier claim of restart-class preservation
+was source-based and should not be repeated as tested behavior.
+Final independent verification retained all 15 other client identities and
+their exact frame/client geometry, and restored Firefox's original geometry.
+The installed eight-default file remained unchanged. Evidence:
+`/tmp/hud-firefox-activation/independent-validation.json`. Only this handoff
+changed in the repository; the previously audited deployment entrypoints,
+dependencies and Salt states are unchanged.
