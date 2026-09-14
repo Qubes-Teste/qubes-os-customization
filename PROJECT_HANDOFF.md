@@ -2725,15 +2725,45 @@ templates. Evidence is `independent-configuration-validation.json`,
 `templates-final-normalized.json` and `template-verification-summary.json`
 under `/tmp/hud-font-pair/`.
 
-Live application activation remains incomplete while the screen is locked.
-The four interactive terminals already load White Rabbit, but the seven
-managed dashboard applications and current i3 retain earlier font caches;
-their guarded refresh stopped before any viewer or window-manager changes.
-Existing Firefox (PID 24312) and Thunar (24271) map both old Wallpoet and new
-Zen Dots, which alone does not establish complete repainting in the new face.
-Dunst's configuration was reloaded through stock `dunstctl reload`. No unlock
-attempt, lock termination or GUI input through the lock was made. Code still
-has its previous live catalog and needs a normal restart. Continue the
-prepared maintenance under `/tmp/hud-font-pair/` after normal unlock, or use a
-normal new desktop login and qube/application restart. Do not claim that all
-currently open applications have been visually verified in the new fonts.
+The first live dashboard refresh stopped at its screen-lock guard. Dunst's
+configuration was reloaded through stock `dunstctl reload`; no unlock attempt,
+lock termination or GUI input through the lock was made. The user subsequently
+returned and reported the remaining old fonts, allowing the refresh below.
+
+### Complete dashboard font refresh without reboot (2026-09-14)
+
+After normal unlock, stock i3 and all seven managed dashboard applications
+were refreshed using the prepared guarded maintenance procedure. The five
+read-only monitor/log panes now load White Rabbit; HUD Bindings uses Zen Dots
+with White Rabbit shortcut keycaps, and Qubes Manager renders Zen Dots.
+Actual screenshots verify top, xentop, Bindings and Manager. All fourteen
+original outer frames, workspace structure, proportions and group/leaf marks
+were preserved. All four interactive terminal shells remain running with
+their original process identities; no reboot or session logout was needed.
+No persistent code, package, font configuration or deployment input changed.
+
+Thunar's current home-folder window (PID 24271) visibly adopted Zen Dots
+through the earlier native font notification, so it did not need replacement.
+Firefox's interface had updated while its existing page still used a cached
+fallback font. Its native About Profiles restart completed before the guarded
+old-window click could execute, replacing PID 24312 with 29031 and XID 77595566
+with 77595681. The old-XID check sent no input. The new browser visibly renders
+the original Wikipedia page in Zen Dots. Native i3 restored its preset mark
+and 40/30/30 column proportions. Only the temporary About Profiles tab was
+closed, after verifying its active title; the original page and New Tab remain.
+
+Final evidence is `/tmp/hud-font-pair/independent-validation.json`, the
+`dashboard-apply.json` process replacement records and the screenshots
+`top-white-rabbit-zen.png`, `xentop-white-rabbit-zen.png`,
+`bindings-white-rabbit-zen.png`, `manager-white-rabbit-zen.png`,
+`thunar-before-normal-refresh.png` and `firefox-zen-dots-final.png` in that
+directory. Fresh process identity and actual font mappings are checked
+separately from XIDs, which the X server can reuse for replacement viewers.
+
+Code is the remaining known dom0 cache exception: its existing main process
+4977 still loads Xolonium and needs a normal application restart. This Codex
+session runs below its extension host, so do not unexpectedly restart Code
+during the conversation. Other already-running qubes adopt their persistent
+template font selection on their next normal start. A full reboot refreshes
+both dom0 applications and running qubes, but is not required for individual
+application or dashboard font changes.
