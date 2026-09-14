@@ -32,7 +32,7 @@ configuration {
 
     background-color:           transparent;
     text-color:                 @hud-text;
-    font:                       "Noto Sans Mono 10";
+    font:                       "Noto Sans 10";
     border-radius:              0px;
 }
 

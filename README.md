@@ -241,53 +241,61 @@ Qubes' default gui-daemon policy rejects
 untrusted AppVM fullscreen requests; override-redirect windows keep
 gui-daemon's protected label border.
 
-### Optional font trials
+### Fonts and monospace text
 
-The shared `qubes_gui.hud.font` state can select **Xolonium**, **Induction**,
-**Neuropol**, **Johnny Fever**, **Zen Dots**, **Orbitron** or **Wallpoet** in
-dom0 and supported guest templates. The original fonts remain the default
-unless a family is explicitly selected.
-The unchanged font files and their licenses are committed to this repository;
-installation is offline and adds no packages, compiled programs or runtime
-helpers. See the [font sources and licenses](salt/qubes_gui/hud/files/fonts/README.md).
+The shared `qubes_gui.hud.font` state supports **Xolonium**, **Induction**,
+**Neuropol**, **Johnny Fever**, **Zen Dots**, **Orbitron**, **Wallpoet** and
+**White Rabbit** in dom0 and supported guest templates. Distribution fonts
+remain the default unless a family is explicitly selected. Unchanged font
+files and their licences are committed to this repository; installation is
+offline and adds no packages, compiled programs or runtime helpers. See the
+[font sources and licences](salt/qubes_gui/hud/files/fonts/README.md).
 
-Start with Xolonium in dom0:
+Select Zen Dots for proportional text and White Rabbit for monospace text:
 
 ```sh
 ./scripts/sync-salt-formula.sh
 sudo qubesctl state.sls qubes_gui.hud.font saltenv=user test=True \
-  'pillar={"qubes_gui":{"hud":{"font":{"family":"Xolonium"}}}}'
+  'pillar={"qubes_gui":{"hud":{"font":{"family":"Zen Dots","monospace_family":"White Rabbit"}}}}'
 sudo qubesctl state.sls qubes_gui.hud.font saltenv=user \
-  'pillar={"qubes_gui":{"hud":{"font":{"family":"Xolonium"}}}}'
+  'pillar={"qubes_gui":{"hud":{"font":{"family":"Zen Dots","monospace_family":"White Rabbit"}}}}'
 ```
 
-The first apply stages and verifies all seven bundled families. Change only
-`family` in the same command for the next trial; subsequent switches reuse
-those files and update the selector and native font cache. No formula sync
-is needed between trials unless repository files changed. Fontconfig prefers
-the selected face for ordinary desktop font requests while retaining symbol
-fonts and missing-character fallbacks. These are proportional display fonts;
-terminals retain their fixed cell grid and may fit fewer columns.
+The first selected apply stages all eight bundled families and checks their
+pinned SHA-256 hashes before enabling the selection. A dry-run describes this
+runtime check; the actual apply verifies the staged files. Later switches
+reuse those files and update only the selector and native font cache.
+Omit `monospace_family` to use the selected `family` throughout,
+as in the earlier single-font trials. White Rabbit is the available separate
+monospace choice. Symbol fonts and existing missing-character fallbacks are
+retained. White Rabbit supplies basic Latin text; German accents and other
+missing characters use installed fallback fonts.
+
+The pair covers the stock font requests used by terminals and VS Code's
+editor/integrated terminal, while desktop interfaces use Zen Dots. VS Code
+can retain its old font catalog until the application is normally restarted.
 
 For a persistent guest selection, add `--skip-dom0 --targets=TEMPLATE` before
 `state.sls`, then shut down that template. Its dependent qubes inherit the
 selection when they next start. For a temporary preview in an already-running
 AppVM, use its exact name as the target and also set
 `"preview_qube":"NAME"` alongside `family`; this changes only its ephemeral
-root. The state never restarts applications or qubes. Restart applications to
-refresh their cached fonts; a new desktop login refreshes dom0 completely.
+root. The state never restarts applications or qubes. Applications may cache
+fonts until refreshed; a new desktop login refreshes dom0 completely.
 
 In guests with ordinary Firefox already installed, a separate editable
 default disables website-chosen fonts so page text uses the selected system
-font. Restore website fonts with **Settings → General → Fonts → Advanced →
+fonts. Restore website fonts with **Settings → General → Fonts → Advanced →
 Allow pages to choose their own fonts**. Existing user choices take precedence.
 Web icon fonts can be affected by disabling page fonts. Browser images and
 other text rendered as pixels cannot be changed by a font selection.
 
 Use `qubes_gui.hud.font-rollback` with the same pillar and target to remove the
-owned selector, browser font default and installed trial fonts. Existing
-distribution fonts and user browser choices are preserved. Omitting the
-family makes both states no-ops; it does not undo an installed selection.
+owned selector, browser font default and installed fonts. Existing distribution
+fonts and user browser choices are preserved; empty managed font directories
+and their ownership record remain. Omitting both font fields makes both states
+no-ops; it does not undo an installed selection. A `monospace_family` without
+a primary `family` is refused.
 
 ## HUD application theme in TemplateVMs
 

@@ -3,6 +3,7 @@
 {% set config = salt['pillar.get']('qubes_gui:hud:font', {}) %}
 {% set cfg = config if config is mapping else {} %}
 {% set family = cfg.get('family', '') %}
+{% set monospace_family = cfg.get('monospace_family', '') %}
 {% set preview_qube = cfg.get('preview_qube', '') %}
 {% set marker = 'Qubes HUD managed file. Owner: salt/qubes_gui/hud/font.' %}
 {% set font_root = '/usr/share/qubes-hud-font-trial' %}
@@ -12,7 +13,8 @@
 {% set browser_text = '// ' ~ marker ~ '\n// Editable default; browser profile choices still take precedence.\npref("browser.display.use_document_fonts", 0);\n' %}
 {% set directories = {'Xolonium': 'xolonium', 'Induction': 'induction',
     'Neuropol': 'neuropol', 'Johnny Fever': 'johnny-fever',
-    'Zen Dots': 'zen-dots', 'Orbitron': 'orbitron', 'Wallpoet': 'wallpoet'} %}
+    'Zen Dots': 'zen-dots', 'Orbitron': 'orbitron', 'Wallpoet': 'wallpoet',
+    'White Rabbit': 'white-rabbit'} %}
 {# Each fixed entry is source path, SHA-256, byte size. Keep old entries when
    adding a family so its installed files remain verifiable during switching. #}
 {% set cc0 = ['typodermic-cc0/CC0-1.0.txt',
@@ -58,6 +60,14 @@
             '0d8dc36abe195fa455a5a9f60a29f0aa29c7404bf880a67ec71f047dabefb02b', 39904],
         'OFL.txt': ['google-fonts/wallpoet/OFL.txt',
             'bddfe669338d0dbc24c15ccd31dbf5c101a213da38049c24baca9ccb7fde45a4', 4400]
+    },
+    'White Rabbit': {
+        'whitrabt.ttf': ['white-rabbit/whitrabt.ttf',
+            '3e845af724f2916d7db7a0565c52c0fcfb0d57ed9615d3640707c6eeb5b1caf7', 13040],
+        'license.txt': ['white-rabbit/license.txt',
+            '011d4331f5c26da39de77b794243892744f94bcb5fa67aaa273a845ac823e9fa', 1086],
+        'whitrabt.txt': ['white-rabbit/whitrabt.txt',
+            '8e2c07766aa552604fbd15688f424a318f7993318e3c41ad144d66d2cb7d2a21', 929]
     }
 } %}
 {% macro font_config(name) -%}
@@ -77,18 +87,64 @@
   </match>
 </fontconfig>
 {%- endmacro %}
-{% set known = namespace(files={}, selectors=[]) %}
+{# Keep the original single-family XML byte-identical for migration. #}
+{% macro split_font_config(name, mono) -%}
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<!-- {{ marker }} -->
+<fontconfig>
+  <dir>{{ font_root }}/{{ directories[name] }}</dir>
+  <dir>{{ font_root }}/{{ directories[mono] }}</dir>
+  <alias><family>{{ mono }}</family><default><family>monospace</family></default></alias>
+  <alias><family>Noto Sans Mono</family><default><family>monospace</family></default></alias>
+  <alias><family>Droid Sans Mono</family><default><family>monospace</family></default></alias>
+  <alias><family>DejaVu Sans Mono</family><default><family>monospace</family></default></alias>
+  <alias><family>Fira Code</family><default><family>monospace</family></default></alias>
+  <alias><family>Hack</family><default><family>monospace</family></default></alias>
+  <match target="pattern">
+    <test name="spacing" compare="more_eq"><const>dual</const></test>
+    <edit name="family" mode="append"><string>monospace</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="family" qual="first" compare="not_contains"><string>Symbol</string></test>
+    <test name="family" qual="first" compare="not_contains"><string>Emoji</string></test>
+    <test name="family" qual="first" compare="not_contains"><string>Awesome</string></test>
+    <test name="family" qual="first" compare="not_contains"><string>Icon</string></test>
+    <test name="family" qual="first" compare="not_contains"><string>Dingbat</string></test>
+    <test name="family" qual="first" compare="not_contains"><string>D050000L</string></test>
+    <test name="family" qual="all" compare="not_eq"><string>monospace</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>{{ name }}</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="family" qual="first" compare="not_contains"><string>Symbol</string></test>
+    <test name="family" qual="first" compare="not_contains"><string>Emoji</string></test>
+    <test name="family" qual="first" compare="not_contains"><string>Awesome</string></test>
+    <test name="family" qual="first" compare="not_contains"><string>Icon</string></test>
+    <test name="family" qual="first" compare="not_contains"><string>Dingbat</string></test>
+    <test name="family" qual="first" compare="not_contains"><string>D050000L</string></test>
+    <test name="family" qual="any" compare="eq"><string>monospace</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>{{ mono }}</string><string>Noto Sans Mono</string></edit>
+  </match>
+</fontconfig>
+{%- endmacro %}
+{% set known = namespace(files={}, selectors={}) %}
 {% for name, files in fonts.items() %}
   {% for filename, asset in files.items() %}
     {% do known.files.update({directories[name] ~ '/' ~ filename: asset}) %}
   {% endfor %}
-  {% do known.selectors.append(font_config(name) ~ '\n') %}
+  {% do known.selectors.update({font_config(name) ~ '\n': [name],
+      split_font_config(name, 'White Rabbit') ~ '\n': [name, 'White Rabbit']}) %}
 {% endfor %}
 
-{% if config is not mapping or family is not string or preview_qube is not string %}
+{% if config is not mapping or family is not string or monospace_family is not string
+    or preview_qube is not string %}
 qubes_gui_hud_font_invalid:
   test.fail_without_changes:
-    - name: Set a font family and optional preview_qube as strings under qubes_gui:hud:font.
+    - name: Set family, optional monospace_family and optional preview_qube as strings under qubes_gui:hud:font.
+{% elif monospace_family not in ['', 'White Rabbit'] or (monospace_family and not family) %}
+qubes_gui_hud_font_monospace_invalid:
+  test.fail_without_changes:
+    - name: Select a primary family and use White Rabbit or an empty string for monospace_family.
 {% elif not family %}
 qubes_gui_hud_font_disabled:
   test.nop:
@@ -182,8 +238,8 @@ qubes_gui_hud_font_target_refused:
     {% else %}
       {% set active_selector = salt['file.read'](selector) %}
       {% if active_selector not in known.selectors %}{% set safe.value = false %}{% endif %}
-      {% for name, files in fonts.items() if not rollback and active_selector == font_config(name) ~ '\n' %}
-        {% for filename in files %}
+      {% for name in known.selectors.get(active_selector, []) if not rollback %}
+        {% for filename in fonts[name] %}
           {% if not safe.files.get(directories[name] ~ '/' ~ filename) %}
             {% set safe.value = false %}
           {% endif %}
@@ -313,19 +369,17 @@ qubes_gui_hud_font_hashes:
       - file: qubes_gui_hud_font_asset_{{ loop.index }}
 {% endfor %}
 {% if not opts.get('test', false) %}
-    - unless:
+    - unless: |
+        /usr/bin/sha256sum --check --strict --status <<'QUBES_HUD_FONT_SHA256'
 {% for name, asset in known.files.items() %}
-      - fun: file.file_exists
-        path: {{ font_root }}/{{ name }}
-      - fun: file.check_hash
-        path: {{ font_root }}/{{ name }}
-        file_hash: sha256={{ asset[1] }}
+        {{ asset[1] }}  {{ font_root }}/{{ name }}
 {% endfor %}
+        QUBES_HUD_FONT_SHA256
 {% endif %}
 qubes_gui_hud_font_selector:
   file.managed:
     - name: {{ selector }}
-    - contents: {{ (font_config(family) ~ '\n')|tojson }}
+    - contents: {{ ((split_font_config(family, monospace_family) if monospace_family else font_config(family)) ~ '\n')|tojson }}
     - user: root
     - group: root
     - mode: '0644'

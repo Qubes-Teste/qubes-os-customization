@@ -1,0 +1,51 @@
+{
+  "family": "White Rabbit",
+  "author": "Matthew Welch",
+  "retrieved_utc": "2026-09-14T18:34:37.979424+00:00",
+  "sources": [
+    {
+      "url": "https://squaregear.net/fonts/whitrabt.zip",
+      "final_url": "https://squaregear.net/fonts/whitrabt.zip",
+      "bytes": 5957,
+      "sha256": "dfc28bb3e6215470264d0dd58503af7a72f115bb72e93b4d60afe3b6bd743989"
+    },
+    {
+      "url": "https://squaregear.net/fonts/license.html",
+      "final_url": "https://squaregear.net/fonts/license.html",
+      "bytes": 2953,
+      "sha256": "a29a44174464ff8ca8d1c31df01d6f4a9e4373b9edec368768df1c291d308a20"
+    },
+    {
+      "url": "https://squaregear.net/fonts/whitrabt.html",
+      "final_url": "https://squaregear.net/fonts/whitrabt.html",
+      "bytes": 3050,
+      "sha256": "f22ebfcfc5a6761bc05b14b37bea1a8701ac69f085d6cc2048f722d05cd1af24"
+    },
+    {
+      "url": "https://squaregear.net/fonts/",
+      "final_url": "https://squaregear.net/fonts/",
+      "bytes": 4621,
+      "sha256": "34b72431b7ae0982a1cd63364de6241c601f96f6aee69f5e84494f8fad53387d"
+    }
+  ],
+  "files": [
+    {
+      "file": "license.txt",
+      "bytes": 1086,
+      "sha256": "011d4331f5c26da39de77b794243892744f94bcb5fa67aaa273a845ac823e9fa"
+    },
+    {
+      "file": "whitrabt.ttf",
+      "bytes": 13040,
+      "sha256": "3e845af724f2916d7db7a0565c52c0fcfb0d57ed9615d3640707c6eeb5b1caf7"
+    },
+    {
+      "file": "whitrabt.txt",
+      "bytes": 929,
+      "sha256": "8e2c07766aa552604fbd15688f424a318f7993318e3c41ad144d66d2cb7d2a21"
+    }
+  ],
+  "license": "Author-provided MIT-style license in original archive license.txt; copyright (C) 1999 Matthew Welch. Current author webpage agrees.",
+  "transport": "HTTPS in existing sys-net, allowlisted URLs; exact bytes transferred through qvm-run and SHA-256 checked. No direct dom0 network.",
+  "modifications": "None. Font and accompanying text retain exact upstream bytes. No build, conversion, subsetting or renaming."
+}

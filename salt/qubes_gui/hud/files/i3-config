@@ -9,7 +9,7 @@
 set $mod Mod4
 
 ## VARS BEGIN ##
-set $font pango:Noto Sans Mono 9
+set $font pango:Noto Sans 9
 
 set $lock i3lock --nofork -c 030b12
 

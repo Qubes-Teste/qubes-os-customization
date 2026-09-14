@@ -23,7 +23,7 @@
 
     sort = yes
     idle_threshold = 120
-    font = Noto Sans Mono 9
+    font = Noto Sans 9
     line_height = 2
     markup = full
     format = "<b>%s</b>\n%b"

@@ -10,3 +10,4 @@ salt/qubes_gui/hud/files/fonts/typodermic-cc0/CC0-1.0.txt -text
 salt/qubes_gui/hud/files/fonts/typodermic-cc0/read-this.html -text whitespace=-blank-at-eol
 salt/qubes_gui/hud/files/fonts/google-fonts/**/OFL.txt -text whitespace=-blank-at-eol
 salt/qubes_gui/hud/files/fonts/google-fonts/**/METADATA.pb -text
+salt/qubes_gui/hud/files/fonts/white-rabbit/*.txt -text whitespace=cr-at-eol,-blank-at-eof

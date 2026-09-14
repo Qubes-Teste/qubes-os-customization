@@ -2616,3 +2616,124 @@ dependencies, network/build commands or generated caches. Default font apply
 and rollback remain no-ops; dom0 package install, refresh and removal still
 resolve to `qubes_dom0_update`. Synced font states match the repository.
 Evidence is `/tmp/hud-orbitron-deployment-audit-k35bkj9c/results.json`.
+
+### Zen Dots and White Rabbit selection (2026-09-14)
+
+The user chose separate proportional and monospace faces, then replaced the
+proposed uppercase-only Johnny Fever with **White Rabbit** after discussing
+case-sensitive commands. The selected pair is **Zen Dots for proportional
+text and White Rabbit for terminals, editors and other monospace text**.
+The preceding Wallpoet and template-preview-only descriptions are historical.
+The font state remains explicitly selected and otherwise a no-op; the README
+and example pillar document `family: Zen Dots` with
+`monospace_family: White Rabbit`. Omitting the monospace key retains the
+earlier single-family behavior and byte-identical legacy selectors.
+
+Matthew Welch's official HTTPS White Rabbit archive contains an MIT-style
+licence permitting use, modification and redistribution, including commercial
+use, while retaining the copyright and permission notice. It agrees with
+`https://squaregear.net/fonts/license.html`; the bundled readme makes contacting
+the author optional. The unchanged TTF and both original CRLF text files are
+committed with provenance. The archive SHA-256 is
+`dfc28bb3e6215470264d0dd58503af7a72f115bb72e93b4d60afe3b6bd743989`;
+the TTF is `3e845af724f2916d7db7a0565c52c0fcfb0d57ed9615d3640707c6eeb5b1caf7`.
+Acquisition used only HTTPS inside existing sys-net and hash-checked transfer;
+dom0 and deployment make no font download. No font conversion, custom binary,
+package, Python module or persistent runtime helper was added.
+
+The existing Salt state now stages eighteen pinned assets across eight
+families and registers only the selected family or pair. Native Fontconfig
+rules distinguish a generic monospace request or explicit fixed spacing from
+proportional requests. Explicit aliases cover the installed applications'
+Noto Sans Mono, Droid Sans Mono, DejaVu Sans Mono, Fira Code and Hack requests.
+Unknown custom family names without a monospace generic or spacing property
+cannot universally be classified from their name. Symbol/icon/emoji request
+exemptions and distribution fallback remain. White Rabbit covers basic Latin;
+Noto Sans Mono is the first missing-character fallback for monospace requests,
+so German accents, arrows and other supported Unicode do not use Zen Dots.
+i3, Rofi and Dunst now request Noto Sans rather than Noto Sans Mono because
+their interface text is proportional; actual terminal settings stay monospace.
+HUD Bindings uses Zen Dots for prose and White Rabbit for shortcut keycaps.
+
+VS Code's installed Linux defaults request Droid Sans Mono for the editor,
+inherit that face in the integrated terminal, and request system-ui/sans-serif
+for its interface. The system rules cover those requests without extensions,
+CSS patches or user settings edits. Existing Code/Chromium processes can retain
+their old font catalog even after GTK updates. This Codex backend is a child
+of Code's extension host, so restarting Code can terminate this maintenance
+session; do not unexpectedly issue Reload Window or kill Code.
+
+The installed pair is persistent in dom0 and all three installed TemplateVMs:
+debian-13-xfce, whonix-gateway-18 and whonix-workstation-18. It was also applied
+to running hud-test for immediate use. Template installation is now
+part of this selected setup, replacing the former preview-only deployment.
+Ordinary Firefox retains its existing editable distribution font default;
+the state does not write Tor Browser or browser profiles. Dependent qubes adopt
+their template's files on their next normal start. Networking/anonymity qubes
+are not restarted merely to refresh fonts.
+
+Whonix exposed a pre-existing Salt condition bug: the module-form `unless`
+could inherit a nonzero shared command return code even when `file.check_hash`
+returned true and all files were intact. The runtime gate now invokes stock
+`sha256sum --check --strict --status` on a fixed, embedded manifest. Valid
+assets pass after a seeded nonzero command; wrong hashes, missing files and
+malformed manifests fail and block activation. The eighteen assets retain
+the original metadata, ownership, content and migration guards. No separate
+manifest file or helper is deployed. Native evidence is under
+`/tmp/hud-whonix-font-diagnosis-_nwk9uvl/`.
+
+Native Fedora and Debian matching tests confirm both roles and Unicode
+fallback. Pango/VTE measures White Rabbit at 96 DPI as 6-by-10-pixel cells
+at 8 points and 8-by-11 at 10 points, with equal advances for printable ASCII
+and visibly distinct `s`/`S`. Evidence is `/tmp/hud-font-split-check/`.
+The final state passes 62 guard/render cases and eight native default, pair
+and rollback renders. Native package providers still resolve to
+`qubes_dom0_update`; evidence is
+`/tmp/hud-white-rabbit-final-native-ppn7r8s5/results.json`. The deployment audit
+finds no added dependencies or deployment network/build commands.
+
+The four existing interactive terminal shells and windows were preserved
+while their live fonts changed to White Rabbit. A temporary native XSettings
+Fontconfig notification plus an Xfce terminal font preference round trip
+refreshed the clients; the original preference was restored. Adding a newly
+registered font directory required a second notification after the first
+Fontconfig rebuild. hud-test's existing xfsettingsd provided its notification;
+dom0 used a short-lived, Fontconfig-only XSettings owner that refuses to replace
+an existing owner. No daemon or refresh script is installed. Actual mapped
+fonts and PTY dimensions, with original shell PID/start-time evidence, are in
+`/tmp/hud-font-pair/existing-dom0-terminals.json` and
+`existing-guest-terminals.json`. X11 resize hints can remain stale and are not
+authoritative for the live PTY's cell geometry.
+
+Actual dom0 installation passed 101 combined HUD/font states; its final repeat
+passed with zero changes. The running hud-test apply and repeat each passed
+31 states, with zero changes on repeat. Debian's initial persistent apply passed all 31
+states. Both corrected Whonix applies passed all 30 states, changing only the
+selector and native cache; native matching and exact selector content were
+then verified inside each template. All three templates ended halted, matching
+their initial state. Evidence is under `/tmp/hud-font-pair/`, including
+`dom0-repeat.json`, `whonix-fixed-normalized.json` and
+`whonix-final-native.json`.
+
+Independent read-only configuration verification passed all eighteen asset
+pins and ownership checks in dom0 and hud-test, exact source selector content,
+native font roles/Unicode fallback, all fourteen original XIDs/outer frames,
+workspace structure and root/leaf marks. It also rechecked all four original
+interactive terminal and shell identities and their White Rabbit mappings.
+The final template evidence contains 91 successful states across three
+templates. Evidence is `independent-configuration-validation.json`,
+`templates-final-normalized.json` and `template-verification-summary.json`
+under `/tmp/hud-font-pair/`.
+
+Live application activation remains incomplete while the screen is locked.
+The four interactive terminals already load White Rabbit, but the seven
+managed dashboard applications and current i3 retain earlier font caches;
+their guarded refresh stopped before any viewer or window-manager changes.
+Existing Firefox (PID 24312) and Thunar (24271) map both old Wallpoet and new
+Zen Dots, which alone does not establish complete repainting in the new face.
+Dunst's configuration was reloaded through stock `dunstctl reload`. No unlock
+attempt, lock termination or GUI input through the lock was made. Code still
+has its previous live catalog and needs a normal restart. Continue the
+prepared maintenance under `/tmp/hud-font-pair/` after normal unlock, or use a
+normal new desktop login and qube/application restart. Do not claim that all
+currently open applications have been visually verified in the new fonts.
