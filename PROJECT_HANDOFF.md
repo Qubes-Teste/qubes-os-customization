@@ -2536,22 +2536,27 @@ Thunar's single home-folder window was normally restarted (PID 17901),
 retaining its frame and mark. The guest selection remains an ephemeral
 preview; no TemplateVM font choice or terminal spacing exception was added.
 
-The screen locked before Firefox's normal restart. Its current main process
-is still PID 13037 and trusted XID 77595338. Its interface/About Profiles
-page already uses Zen Dots, but ordinary page-content activation has not yet
-been verified. The user was asked to unlock normally; no unlock attempt,
-lock termination or input injection was performed. The two lock processes
-were 150305/150306. After unlock, finish the native About Profiles restart,
-preserve existing tabs, restore the browser preset mark and 40/30/30 layout
-if necessary, then verify page rendering and return focus to HUD Bindings.
-The earlier `thunar-zen-dots.png` was captured after locking and must not be
-used as visual font evidence. Actual HUD screenshot and live Salt logs are
-under `/tmp/hud-font-zen-dots/`; Orbitron and Wallpoet await later user trials.
+The screen locked before Firefox's normal restart, initially leaving main
+PID 13037 and trusted XID 77595338 running with an updated interface but
+unverified page content. The user was asked to unlock normally; no unlock
+attempt, lock termination or input injection was performed. The initial
+`thunar-zen-dots.png` captures the lock and is not visual font evidence.
+`partial-validation.json` records that temporary incomplete stage.
 
-Read-only partial validation preserved all fourteen frames/layouts, five
-protected XIDs, both root marks and four qube leaf marks. The seven refreshed
-dom0 processes and Thunar load ZenDots-Regular.ttf; native matching selects
-Zen Dots on both targets. Firefox's UI maps that font too, but its restart
-and ordinary page verification remain explicitly pending. The evidence
-`/tmp/hud-font-zen-dots/partial-validation.json` records
-`visual_trial_complete:false` and successful 26/27-state zero-change repeats.
+The user later unlocked and Firefox had already restarted to PID 20314 /
+XID 77595431. Its existing Wikipedia page now visibly renders Zen Dots.
+Native i3 commands restored its 40/30/30 layout and preset mark; only the
+temporary About Profiles tab was closed. Final read-only verification
+preserved all fourteen frames/layouts, five protected XIDs, both root marks
+and four qube leaf marks. All seven refreshed dom0 processes plus Firefox
+and Thunar map ZenDots-Regular.ttf. Evidence is
+`/tmp/hud-font-zen-dots/independent-validation.json`; final screenshots are
+`firefox-zen-dots-settled.png`, `thunar-zen-dots-unlocked.png` and
+`top-zen-dots.png`. The 26/27-state repeats passed with zero changes.
+
+The user asked where to judge terminal letter spacing. All five read-only
+VTE panes (HUD top, xentop, systemd-cgtop, dom0 logs and Xen logs) were
+refreshed and independently confirmed to load Zen Dots. Interactive terminal
+sessions were preserved and can retain earlier cached font metrics. Final
+focus was placed on workspace 1 HUD top for the spacing comparison. Orbitron
+and Wallpoet remain the next trials; Neuropol stays on the shortlist.
