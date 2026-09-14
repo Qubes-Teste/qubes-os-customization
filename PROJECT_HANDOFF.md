@@ -2528,7 +2528,7 @@ Native package providers still resolve to `qubes_dom0_update`. Evidence is
 `/tmp/hud-google-fonts-native-i1owar_l/results.json` and
 `/tmp/hud-font-catalog-audit-9z98k58_/google-fonts-results.json`.
 
-**Zen Dots is the current selection.** Actual applies passed 26 dom0 and
+**Zen Dots was selected for this trial, followed by Orbitron and Wallpoet below.** Actual applies passed 26 dom0 and
 27 hud-test states; each staged the three added families and selected Zen
 Dots. Repeat applies passed with zero changes. The seven managed dom0
 viewers/Manager were refreshed after stock i3's font-cache restart, and
@@ -2560,3 +2560,59 @@ refreshed and independently confirmed to load Zen Dots. Interactive terminal
 sessions were preserved and can retain earlier cached font metrics. Final
 focus was placed on workspace 1 HUD top for the spacing comparison. Orbitron
 and Wallpoet remain the next trials; Neuropol stays on the shortlist.
+
+### Orbitron and Wallpoet trials (2026-09-14)
+
+The user requested the remaining original fonts before considering a
+monospace derivative. Orbitron was selected in dom0 and the ephemeral
+hud-test preview, and the seven managed dom0 windows plus Thunar were
+refreshed. The user then requested stopping Orbitron before the planned
+Firefox restart. **Wallpoet is now the current selection.** No font outlines,
+terminal spacing configuration, runtime helper or package dependency changed.
+Neuropol remains a shortlisted candidate; no final TemplateVM font selection
+has been made.
+
+Both switches used the unchanged bundled font state. Each passed 26 dom0 and
+27 guest states, changing only the selector and native font cache. After the
+Wallpoet apply, stock i3 and the seven managed dom0 applications were refreshed.
+Thunar was normally restarted in its original home-folder view (PID 24271).
+Firefox's native Restart normally control replaced PID 20314 with 24312;
+its original Wikipedia page visibly renders Wallpoet. The original page and
+blank New Tab remain; only the temporary About Profiles tab was closed.
+The browser's preset mark and 40/30/30 layout were restored.
+
+Independent validation preserved all fourteen outer frames, ordered layouts,
+five protected interactive-terminal/Code XIDs, both root marks and all four
+qube leaf marks against both the Wallpoet and original pre-Orbitron snapshots.
+All seven refreshed dom0 processes plus Firefox and Thunar map Wallpoet, and
+native font matching selects it in both targets. Evidence and screenshots are
+under `/tmp/hud-font-wallpoet/`, including `independent-validation.json`,
+`top-wallpoet.png`, `bindings-wallpoet.png`, `thunar-wallpoet.png` and
+`firefox-wallpoet-page.png`. Final focus is workspace 1 HUD top. Interactive
+terminal processes remain intact and may retain earlier cached font metrics.
+The guest font installation remains an ephemeral AppVM preview.
+
+Native VTE measurements at 96 DPI and Regular 8 points give cell widths of
+8 pixels for Johnny Fever, 13 for Zen Dots, 13 for Orbitron and 10 for Wallpoet.
+Median lowercase advances are 6, 8, 7 and 8 pixels respectively. Wallpoet's
+approximately two pixels of spare cell width around a typical lowercase
+letter are comparable to Johnny Fever; Orbitron remains relatively spread
+out. This measures native fixed-grid rendering, not modified fonts or a
+tracking adjustment. Measurements at 10 points and private terminal specimens
+are recorded in `/tmp/hud-font-spacing-check/four-font-comparison.json` and
+`spacing-*-8pt.png`. The private display was cleaned up.
+
+Two native maintenance caveats were observed and resolved. Stock Qube Manager
+startup raced deletion of Salt's temporary management disposable during the
+Orbitron refresh; relaunching it after guest Salt completed succeeded. Finish
+guest Salt before refreshing Manager. After the Wallpoet i3 restart, hidden
+workspaces briefly retained geometry without the bar's reserved space;
+visiting each existing workspace recalculated their original frames before
+viewer replacement. Native restarts also required restoring the two exact
+workspace group marks. These are maintenance actions, not deployed helpers.
+
+The deployment audit covered 97 files and 15 script entrypoints with no new
+dependencies, network/build commands or generated caches. Default font apply
+and rollback remain no-ops; dom0 package install, refresh and removal still
+resolve to `qubes_dom0_update`. Synced font states match the repository.
+Evidence is `/tmp/hud-orbitron-deployment-audit-k35bkj9c/results.json`.
