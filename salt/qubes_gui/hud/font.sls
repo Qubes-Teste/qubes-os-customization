@@ -11,7 +11,8 @@
 {% set selector = '/etc/fonts/conf.d/99-qubes-hud-font.conf' %}
 {% set browser_text = '// ' ~ marker ~ '\n// Editable default; browser profile choices still take precedence.\npref("browser.display.use_document_fonts", 0);\n' %}
 {% set directories = {'Xolonium': 'xolonium', 'Induction': 'induction',
-    'Neuropol': 'neuropol', 'Johnny Fever': 'johnny-fever'} %}
+    'Neuropol': 'neuropol', 'Johnny Fever': 'johnny-fever',
+    'Zen Dots': 'zen-dots', 'Orbitron': 'orbitron', 'Wallpoet': 'wallpoet'} %}
 {# Each fixed entry is source path, SHA-256, byte size. Keep old entries when
    adding a family so its installed files remain verifiable during switching. #}
 {% set cc0 = ['typodermic-cc0/CC0-1.0.txt',
@@ -39,6 +40,24 @@
         'Johnny-Fever.otf': ['typodermic-cc0/Johnny-Fever.otf',
             '95754e0775367dd1415885f6450d4d11d6319497d591b958e2c3e43ca98d0e8a', 29556],
         'Typodermic-CC0-1.0.txt': cc0
+    },
+    'Zen Dots': {
+        'ZenDots-Regular.ttf': ['google-fonts/zen-dots/ZenDots-Regular.ttf',
+            '2f81a9f4c26f302d87a40792e048cd7193c886aa50fa6792a4b4fb6266c25609', 37112],
+        'OFL.txt': ['google-fonts/zen-dots/OFL.txt',
+            '31b461a9de7f5b4ceb988b01d6ce4d9318180394cb5dacff5bf08c557f3cb7a0', 4386]
+    },
+    'Orbitron': {
+        'Orbitron-Variable.ttf': ['google-fonts/orbitron/Orbitron-Variable.ttf',
+            'f42db2dd16e642258e35782916eceb1dcdbea06fb958d77ad71dc5963587e8fd', 38576],
+        'OFL.txt': ['google-fonts/orbitron/OFL.txt',
+            'ab609b0e110d622435ff337cdf233288556e011bbf9bd0550be98846c0630819', 4426]
+    },
+    'Wallpoet': {
+        'Wallpoet-Regular.ttf': ['google-fonts/wallpoet/Wallpoet-Regular.ttf',
+            '0d8dc36abe195fa455a5a9f60a29f0aa29c7404bf880a67ec71f047dabefb02b', 39904],
+        'OFL.txt': ['google-fonts/wallpoet/OFL.txt',
+            'bddfe669338d0dbc24c15ccd31dbf5c101a213da38049c24baca9ccb7fde45a4', 4400]
     }
 } %}
 {% macro font_config(name) -%}

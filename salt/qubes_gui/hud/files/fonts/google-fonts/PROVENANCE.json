@@ -1,0 +1,90 @@
+{
+  "commit": "809e4d8b8d7e9364a914909bb777679606c178b8",
+  "files": [
+    {
+      "directory": "zen-dots",
+      "file": "ZenDots-Regular.ttf",
+      "upstream_path": "ofl/zendots/ZenDots-Regular.ttf",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/809e4d8b8d7e9364a914909bb777679606c178b8/ofl/zendots/ZenDots-Regular.ttf",
+      "bytes": 37112,
+      "sha256": "2f81a9f4c26f302d87a40792e048cd7193c886aa50fa6792a4b4fb6266c25609",
+      "git_blob_sha1": "0ebced970a086e228cc2c2c6b55fed15939ae241"
+    },
+    {
+      "directory": "zen-dots",
+      "file": "OFL.txt",
+      "upstream_path": "ofl/zendots/OFL.txt",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/809e4d8b8d7e9364a914909bb777679606c178b8/ofl/zendots/OFL.txt",
+      "bytes": 4386,
+      "sha256": "31b461a9de7f5b4ceb988b01d6ce4d9318180394cb5dacff5bf08c557f3cb7a0",
+      "git_blob_sha1": "d8eabafa13b217fdfdfaac844c38946781ea85a3"
+    },
+    {
+      "directory": "zen-dots",
+      "file": "METADATA.pb",
+      "upstream_path": "ofl/zendots/METADATA.pb",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/809e4d8b8d7e9364a914909bb777679606c178b8/ofl/zendots/METADATA.pb",
+      "bytes": 909,
+      "sha256": "76c17a1a75b3e54b8f6db479b314e5a3206a354164446e297df092ba40eccda3",
+      "git_blob_sha1": "31282ed340738d642fe71b1eb6d504a0f3e6b5a5"
+    },
+    {
+      "directory": "orbitron",
+      "file": "Orbitron-Variable.ttf",
+      "upstream_path": "ofl/orbitron/Orbitron[wght].ttf",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/809e4d8b8d7e9364a914909bb777679606c178b8/ofl/orbitron/Orbitron%5Bwght%5D.ttf",
+      "bytes": 38576,
+      "sha256": "f42db2dd16e642258e35782916eceb1dcdbea06fb958d77ad71dc5963587e8fd",
+      "git_blob_sha1": "1fc54ce7116a6ec549f37358466bcc92f9a72c33"
+    },
+    {
+      "directory": "orbitron",
+      "file": "OFL.txt",
+      "upstream_path": "ofl/orbitron/OFL.txt",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/809e4d8b8d7e9364a914909bb777679606c178b8/ofl/orbitron/OFL.txt",
+      "bytes": 4426,
+      "sha256": "ab609b0e110d622435ff337cdf233288556e011bbf9bd0550be98846c0630819",
+      "git_blob_sha1": "91ede459e18c22d3f2ba7c27d925b49cc945abe4"
+    },
+    {
+      "directory": "orbitron",
+      "file": "METADATA.pb",
+      "upstream_path": "ofl/orbitron/METADATA.pb",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/809e4d8b8d7e9364a914909bb777679606c178b8/ofl/orbitron/METADATA.pb",
+      "bytes": 679,
+      "sha256": "6e897c83b8fcdeccb78accb132efd7b279267b684484aa0735b78aba711d0b36",
+      "git_blob_sha1": "bc491e70186b9c36a081c6bb25b95b10d6b4f9ad"
+    },
+    {
+      "directory": "wallpoet",
+      "file": "Wallpoet-Regular.ttf",
+      "upstream_path": "ofl/wallpoet/Wallpoet-Regular.ttf",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/809e4d8b8d7e9364a914909bb777679606c178b8/ofl/wallpoet/Wallpoet-Regular.ttf",
+      "bytes": 39904,
+      "sha256": "0d8dc36abe195fa455a5a9f60a29f0aa29c7404bf880a67ec71f047dabefb02b",
+      "git_blob_sha1": "d932fbeb0c701a246bda3c9473793f60dc1e0770"
+    },
+    {
+      "directory": "wallpoet",
+      "file": "OFL.txt",
+      "upstream_path": "ofl/wallpoet/OFL.txt",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/809e4d8b8d7e9364a914909bb777679606c178b8/ofl/wallpoet/OFL.txt",
+      "bytes": 4400,
+      "sha256": "bddfe669338d0dbc24c15ccd31dbf5c101a213da38049c24baca9ccb7fde45a4",
+      "git_blob_sha1": "6c0ff2bcb262ee31454443797fb42b534a9511e5"
+    },
+    {
+      "directory": "wallpoet",
+      "file": "METADATA.pb",
+      "upstream_path": "ofl/wallpoet/METADATA.pb",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/809e4d8b8d7e9364a914909bb777679606c178b8/ofl/wallpoet/METADATA.pb",
+      "bytes": 568,
+      "sha256": "24fc1d833853892740501f6edd28a4255049c1ac876159d4bce83174c4a9671a",
+      "git_blob_sha1": "42b976f50f155a02ccb478de04ed6739fcd1a95e"
+    }
+  ],
+  "repository_url": "https://github.com/google/fonts",
+  "retrieved_utc": "2026-09-14T12:49:26.462274+00:00",
+  "transport": "HTTPS in existing sys-net; allowlisted files selectively transferred through qvm-run stdout, Git blob SHA-1 and SHA-256 verified. No direct dom0 network.",
+  "modifications": "Original bytes unchanged. Orbitron[wght].ttf stored externally as Orbitron-Variable.ttf for Salt sync path policy; internal font name unchanged. No build, conversion, subsetting or font modification."
+}

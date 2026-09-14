@@ -2462,7 +2462,7 @@ The guest font selection remains ephemeral until a final font is chosen.
 ### Johnny Fever trial (2026-09-13)
 
 The user retained **Neuropol as a top candidate** and requested the last font.
-**Johnny Fever is now selected** in dom0 and the running hud-test preview.
+**Johnny Fever was selected** in dom0 and the running hud-test preview.
 Induction remains rejected; no final favorite or template-wide installation
 has been requested. All four committed candidates remain available locally.
 
@@ -2487,3 +2487,71 @@ default-render and UpdateVM-provider evidence, recorded in
 `/tmp/hud-font-johnny-fever-preflight.json`. No runtime code, dependency or
 terminal spacing exception changed. Final focus is workspace 1 HUD Bindings;
 the guest selection remains ephemeral while the user compares candidates.
+
+
+### Google Fonts candidates and Zen Dots trial (2026-09-14)
+
+The user liked Johnny Fever's appearance but found its uppercase-only design
+impractical, and requested Zen Dots, Orbitron (Google), then Wallpoet.
+Neuropol remains a top candidate; Induction remains rejected. The shared
+font catalog now includes these three additional families, retaining all
+four earlier choices and their exact selector/asset declarations. The only
+state change is the family/asset manifest expansion; no runtime helper,
+package, framework or font conversion was added.
+
+The original Google Fonts TTFs, copyright/OFL notices and catalog metadata
+are committed under `files/fonts/google-fonts/`. Acquisition pinned official
+repository commit `809e4d8b8d7e9364a914909bb777679606c178b8`, downloaded only
+allowlisted files through HTTPS in existing sys-net, and checked Git blob
+identities plus SHA-256 on transfer. Dom0 made no network request. Provenance
+records source URLs, exact sizes/hashes and the commit. Orbitron's external
+filename is `Orbitron-Variable.ttf` to satisfy the existing sync path policy;
+its variable font bytes and internal name remain unchanged. Git attributes
+preserve original TTF, metadata and licence bytes, including upstream trailing
+spaces in OFL notices. Normal target deployment downloads nothing.
+
+All three contain visibly distinct lowercase glyphs. Native Pango/FreeType
+checks confirmed ASCII and German umlauts/sharp-s coverage; capital sharp-s
+is present in Zen Dots and uses fallback in Orbitron/Wallpoet. Orbitron's
+actual variable weight coordinates 400/700/900 were selected correctly.
+Zen Dots and Wallpoet supply Regular only; ordinary bold synthesis remains
+the stock renderer's behavior. Evidence is `/tmp/hud-google-font-check/`.
+
+The first selected apply now stages fifteen font/licence files across seven
+families, registering only the chosen directory after the runtime hash gate.
+Native validation passed 32 default/family apply/rollback render variants;
+independent review confirmed every asset pin, all thirty ordered existence
+and hash checks, and byte-identical prior selectors. The deployment audit
+covered 97 files and 15 script entrypoints with no new package declarations,
+network/build commands, external Python modules, ELF programs or caches.
+Native package providers still resolve to `qubes_dom0_update`. Evidence is
+`/tmp/hud-google-fonts-native-i1owar_l/results.json` and
+`/tmp/hud-font-catalog-audit-9z98k58_/google-fonts-results.json`.
+
+**Zen Dots is the current selection.** Actual applies passed 26 dom0 and
+27 hud-test states; each staged the three added families and selected Zen
+Dots. Repeat applies passed with zero changes. The seven managed dom0
+viewers/Manager were refreshed after stock i3's font-cache restart, and
+Thunar's single home-folder window was normally restarted (PID 17901),
+retaining its frame and mark. The guest selection remains an ephemeral
+preview; no TemplateVM font choice or terminal spacing exception was added.
+
+The screen locked before Firefox's normal restart. Its current main process
+is still PID 13037 and trusted XID 77595338. Its interface/About Profiles
+page already uses Zen Dots, but ordinary page-content activation has not yet
+been verified. The user was asked to unlock normally; no unlock attempt,
+lock termination or input injection was performed. The two lock processes
+were 150305/150306. After unlock, finish the native About Profiles restart,
+preserve existing tabs, restore the browser preset mark and 40/30/30 layout
+if necessary, then verify page rendering and return focus to HUD Bindings.
+The earlier `thunar-zen-dots.png` was captured after locking and must not be
+used as visual font evidence. Actual HUD screenshot and live Salt logs are
+under `/tmp/hud-font-zen-dots/`; Orbitron and Wallpoet await later user trials.
+
+Read-only partial validation preserved all fourteen frames/layouts, five
+protected XIDs, both root marks and four qube leaf marks. The seven refreshed
+dom0 processes and Thunar load ZenDots-Regular.ttf; native matching selects
+Zen Dots on both targets. Firefox's UI maps that font too, but its restart
+and ordinary page verification remain explicitly pending. The evidence
+`/tmp/hud-font-zen-dots/partial-validation.json` records
+`visual_trial_complete:false` and successful 26/27-state zero-change repeats.

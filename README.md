@@ -244,8 +244,9 @@ gui-daemon's protected label border.
 ### Optional font trials
 
 The shared `qubes_gui.hud.font` state can select **Xolonium**, **Induction**,
-**Neuropol** or **Johnny Fever** in dom0 and supported guest templates. The
-original fonts remain the default unless a family is explicitly selected.
+**Neuropol**, **Johnny Fever**, **Zen Dots**, **Orbitron** or **Wallpoet** in
+dom0 and supported guest templates. The original fonts remain the default
+unless a family is explicitly selected.
 The unchanged font files and their licenses are committed to this repository;
 installation is offline and adds no packages, compiled programs or runtime
 helpers. See the [font sources and licenses](salt/qubes_gui/hud/files/fonts/README.md).
@@ -260,7 +261,7 @@ sudo qubesctl state.sls qubes_gui.hud.font saltenv=user \
   'pillar={"qubes_gui":{"hud":{"font":{"family":"Xolonium"}}}}'
 ```
 
-The first apply stages and verifies all four bundled families. Change only
+The first apply stages and verifies all seven bundled families. Change only
 `family` in the same command for the next trial; subsequent switches reuse
 those files and update the selector and native font cache. No formula sync
 is needed between trials unless repository files changed. Fontconfig prefers
