@@ -182,6 +182,12 @@ additional and named workspaces retain their normal buttons and status. This
 uses official i3bar's workspace protocol (i3 4.23+) and an event-driven mode of
 the existing helper, with no extra packages or compiled code.
 
+The panel shows **RAM free** beside **Disk free**, using Xen's unallocated
+host memory in GiB. RAM already assigned to qubes, including memory that could
+later be reclaimed, is excluded. A small standard-library Python filter adds
+this field to the stock Qubes status output using the existing `xl` command;
+no package or permission change is needed.
+
 The five read-only panes share a small GTK/VTE viewer with visible horizontal
 and vertical scrollbars. Wide, tall monitor canvases let you pan through the
 live tables; log panes retain short terminal history. The viewer reuses the

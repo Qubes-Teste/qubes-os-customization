@@ -2927,3 +2927,49 @@ therefore too broad. No application, window-manager or qube restart was needed.
 Evidence is under `/tmp/hud-bar-font-hho029cx/`, including
 `native-clock-widths.json`, `dry-run.json`, `apply.json` and
 `live-validation-final.json`; the audit is `/tmp/hud-bar-font-audit.json`.
+
+### Xen free RAM beside disk space (2026-09-15)
+
+The user requested `RAM free` next to `Disk free` and explicitly selected
+whole-machine Xen free RAM. The panel now pipes the unchanged qubes-i3status
+output through the 52-line standard-library `hud-status` filter. It inserts a
+RAM block immediately after the disk block, preserving the other fields,
+colors and protocol framing. The original Qubes program has no configurable
+RAM field, so this small filter avoids copying or modifying its implementation.
+
+The existing `/usr/bin/xl info free_memory` returns unallocated host memory
+in MiB after outstanding reservations. The filter displays GiB to one decimal
+place, caches readings for two seconds and bounds each command to one second.
+Allocated qube RAM, including reclaimable memory, is excluded. The desktop
+user can read the value using stock Qubes Xen permissions; no sudo rule,
+service, package, extra Python module or guest change was added. Errors and
+invalid readings show `RAM free: unavailable`. Padding and i3bar's min_width
+keep the field stable with the accepted White Rabbit font.
+
+Salt installs the root-owned helper with an AST check before its i3 config
+can activate. Both apply and rollback check its marker, file type, owner,
+mode and single-link requirement. Rollback removes it after restoring the
+base i3 config. i3bar controls the native pipeline's process group; the filter
+keeps standard signal handling and exits on EOF or a closed output pipe.
+
+Nine focused unittest checks passed, covering native command arguments,
+units, read failures, stream framing, insertion/order/color preservation,
+caching, flushing and EOF. Bounded real subprocess checks passed for EOF and
+SIGPIPE with empty stderr and no leaked processes. Twenty isolated native
+Salt guard/render cases passed. The audit covered 86 deployment files and
+16 script entry points, finding no added dependencies or network/build path;
+loaded package functions still use qubes_dom0_update. Evidence is
+`/tmp/hud-status-stream-rf1obbgl/` and `/tmp/hud-status-salt-audit-uxz2svx8/`.
+
+The normal HUD dry run and apply passed all 83 states and changed only the
+new helper and saved i3 config. The native default rollback render retained
+its existing active-qube-preset refusal; no rollback was executed. A normal
+i3 reload restarted only the status pipeline to activate the new command.
+The live panel visibly shows RAM immediately beside disk in cyan/White Rabbit,
+with its existing 30-pixel height. Deployment results, before/after snapshots,
+the native stream preview and `top-panel.png` are under
+`/tmp/hud-ram-status-zvhp_yig/`.
+`independent-live-validation.json` confirms all 14 application identities,
+geometry, workspace structure, focus and marks are preserved. The existing
+i3/bar processes remain intact, the previous status process exited, and one
+stock status process plus one filter share i3bar's native child process group.

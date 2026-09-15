@@ -78,6 +78,7 @@
 {% set monitor_module = '/usr/local/libexec/qubes-hud/hud_monitor.py' %}
 {% set terminal_module = '/usr/local/libexec/qubes-hud/hud_terminal.py' %}
 {% set workspace_helper = '/usr/local/libexec/qubes-hud/hud-workspace' %}
+{% set status_helper = '/usr/local/libexec/qubes-hud/hud-status' %}
 {% set night_helper = '/usr/local/libexec/qubes-hud/hud-night-light' %}
 {% set output_module = '/usr/local/libexec/qubes-hud/hud_output.py' %}
 {% set night_config_dir = desktop_home ~ '/.config/qubes-hud' %}
@@ -294,6 +295,7 @@
     (monitor_module, [hud_asset_marker]),
     (terminal_module, [hud_asset_marker]),
     (workspace_helper, [hud_asset_marker]),
+    (status_helper, [hud_asset_marker]),
     (bindings_data, [hud_asset_marker]),
     (bindings_desktop, [hud_asset_marker]),
     (dom0_logs_desktop, [hud_asset_marker]),
@@ -362,12 +364,14 @@
     (bindings_helper, '0755'), (bindings_keyboard, '0644'),
     (logs_module, '0644'), (bindings_data, '0644'),
     (monitor_module, '0644'), (workspace_helper, '0755'),
+    (status_helper, '0755'),
     (bindings_desktop, '0644'), (dom0_logs_desktop, '0644'),
     (xen_logs_desktop, '0644')
 ] %}
   {% set target_lstat = salt['file.lstat'](path) %}
   {% if target_lstat|length > 0 and (
       target_lstat.get('st_uid') != 0 or target_lstat.get('st_gid') != 0
+      or (path == status_helper and target_lstat.get('st_nlink') != 1)
       or salt['file.get_mode'](path) != expected_mode) %}
     {% set collision.found = true %}
   {% endif %}
@@ -592,6 +596,20 @@ qubes_gui_hud_keyboard_helper:
     - name: {{ keyboard_helper }}
     - source: salt://qubes_gui/hud/files/apply-keyboard-layout
     - check_cmd: /usr/bin/bash -n
+    - user: root
+    - group: root
+    - mode: '0755'
+    - require:
+      - file: qubes_gui_hud_binary_directory
+
+qubes_gui_hud_status_helper:
+  file.managed:
+    - name: {{ status_helper }}
+    - source: salt://qubes_gui/hud/files/hud-status
+    - check_cmd: >-
+        /usr/bin/python3 -c 'import ast, sys;
+        ast.parse(open(sys.argv[1], encoding="utf-8").read(),
+        filename=sys.argv[1])'
     - user: root
     - group: root
     - mode: '0755'
@@ -1156,6 +1174,7 @@ qubes_gui_hud_i3_config:
       - file: qubes_gui_hud_user_i3_directory
       - file: qubes_gui_hud_keyboard_helper
       - file: qubes_gui_hud_autostart_helper
+      - file: qubes_gui_hud_status_helper
       - cmd: qubes_gui_hud_official_i3_binary_present
 
 qubes_gui_hud_rofi_theme:

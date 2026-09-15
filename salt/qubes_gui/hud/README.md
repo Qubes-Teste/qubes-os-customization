@@ -289,6 +289,21 @@ The bar uses White Rabbit through the shared monospace font rules, keeping
 the clock's width constant as digits change. Window titles retain Zen Dots.
 Other status fields can still resize when their character count changes.
 
+`hud-status` adds **RAM free** immediately after **Disk free** in the stock
+`qubes-i3status` JSON stream. It reads `/usr/bin/xl info free_memory` every two
+seconds, converts MiB to GiB, and reserves a stable field width. This is Xen's
+unallocated host RAM after outstanding reservations, excluding RAM assigned to
+qubes even if it could later be reclaimed. It is not dom0's `/proc/meminfo`.
+Failed, invalid or timed-out reads display `RAM free: unavailable`.
+
+The filter uses only system Python's standard library and the existing stock
+Xen command. It runs as the desktop user with existing Qubes permissions;
+it adds no sudo rule, service or package and leaves the packaged status program
+untouched. It is necessary because that program has no RAM-field configuration.
+i3bar controls the whole pipeline's process group for pause, resume and exit.
+Salt validates and installs the owned helper before selecting it in i3, and
+rollback removes it after restoring the base i3 configuration.
+
 Individual monitors can be reopened from the application launcher or with
 `gtk-launch qubes-hud-top`, `gtk-launch qubes-hud-xentop` and
 `gtk-launch qubes-hud-cgtop`. General HUD rollback removes owned launch/config

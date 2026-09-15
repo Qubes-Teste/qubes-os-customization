@@ -1,0 +1,52 @@
+#!/usr/bin/python3
+# Qubes HUD managed file. Owner: salt/qubes_gui/hud.
+"""Add Xen free RAM to the stock qubes-i3status stream without replacing it."""
+import json
+import signal
+import subprocess
+import sys
+import time
+
+
+def ram_text():
+    try:
+        mib = int(subprocess.check_output(
+            ["/usr/bin/xl", "info", "free_memory"], text=True,
+            stderr=subprocess.DEVNULL, timeout=1))
+        if mib < 0:
+            raise ValueError("negative memory")
+        return f"RAM free: {mib / 1024:6.1f} GiB"
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return "RAM free: unavailable"
+
+
+def add_ram(line, text):
+    prefix = "," if line.startswith(",") else ""
+    try:
+        blocks = json.loads(line[len(prefix):])
+    except json.JSONDecodeError:
+        return line
+    if isinstance(blocks, list):
+        for index, block in enumerate(blocks):
+            if isinstance(block, dict) and block.get("name") == "disk":
+                blocks.insert(index + 1, {"name": "ram", "full_text": text,
+                              "min_width": "RAM free: unavailable"})
+                return prefix + json.dumps(blocks) + "\n"
+    return line
+
+
+def main():
+    # i3bar controls the whole pipeline's process group; keep native signals.
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    next_read = 0
+    text = "RAM free: unavailable"
+    for line in sys.stdin:
+        if time.monotonic() >= next_read:
+            text = ram_text()
+            next_read = time.monotonic() + 2
+        sys.stdout.write(add_ram(line, text))
+        sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    main()

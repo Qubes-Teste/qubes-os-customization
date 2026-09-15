@@ -270,7 +270,7 @@ bar {
         position top
         height 30
         tray_output primary
-        status_command qubes-i3status
+        status_command qubes-i3status | /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-status
         workspace_command exec /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-workspace --buttons
         # White Rabbit via the HUD's monospace rules keeps clock digits stable.
         font pango:Noto Sans Mono 9
