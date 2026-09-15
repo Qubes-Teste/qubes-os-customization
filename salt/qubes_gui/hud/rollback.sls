@@ -525,6 +525,9 @@ qubes_gui_hud_rollback_unmanaged_target_refused:
 
 {% else %}
 
+include:
+  - qubes_gui.hud.font-rollback
+
 qubes_gui_hud_rollback_official_i3_binary:
   cmd.run:
     - name: /usr/bin/test -x /usr/bin/i3
@@ -582,6 +585,7 @@ qubes_gui_hud_rollback_accountsservice_session:
         /usr/bin/grep --quiet --fixed-strings XSession=i3
         /var/lib/AccountsService/users/{{ desktop_user }}
     - require:
+      - sls: qubes_gui.hud.font-rollback
       - file: qubes_gui_hud_rollback_i3_config
       - file: qubes_gui_hud_rollback_official_i3_lightdm_selection
       - file: qubes_gui_hud_rollback_remove_lightdm_selection

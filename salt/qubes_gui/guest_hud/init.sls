@@ -385,12 +385,17 @@ qubes_gui_guest_hud_sdwdate_unit_unsupported:
 
 {% else %}
 
+include:
+  - qubes_gui.hud.font
+
 qubes_gui_guest_hud_runtime_packages:
   pkg.installed:
     - pkgs:
 {% for package in guest_hud_platform.get('packages', []) %}
       - {{ package }}
 {% endfor %}
+    - require_in:
+      - sls: qubes_gui.hud.font
 
 qubes_gui_guest_hud_theme_root:
   file.directory:
@@ -809,6 +814,7 @@ qubes_gui_guest_hud_complete:
         Qubes HUD guest theme is installed in this TemplateVM. Dependent qubes
         receive it after they restart.
     - require:
+      - sls: qubes_gui.hud.font
       - file: qubes_gui_guest_hud_gtk2_theme
       - file: qubes_gui_guest_hud_gtk3_overlay
       - file: qubes_gui_guest_hud_gtk4_overlay

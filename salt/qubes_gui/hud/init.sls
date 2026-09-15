@@ -545,6 +545,9 @@ qubes_gui_hud_unmanaged_target_refused:
 
 {% else %}
 
+include:
+  - qubes_gui.hud.font
+
 {% if transport == 'direct-dom0' %}
 qubes_gui_hud_runtime_packages_direct:
   cmd.run:
@@ -552,6 +555,8 @@ qubes_gui_hud_runtime_packages_direct:
         /usr/bin/dnf --setopt=reposdir=/etc/yum.repos.d --refresh
         --assumeyes install {{ runtime_packages|join(' ') }}
     - unless: /usr/bin/rpm --quiet -q {{ runtime_packages|join(' ') }}
+    - require_in:
+      - sls: qubes_gui.hud.font
 {% else %}
 qubes_gui_hud_runtime_packages_qubes_updatevm:
   pkg.installed:
@@ -560,6 +565,8 @@ qubes_gui_hud_runtime_packages_qubes_updatevm:
       - {{ package }}
 {% endfor %}
     - refresh: true
+    - require_in:
+      - sls: qubes_gui.hud.font
 {% endif %}
 
 qubes_gui_hud_official_i3_binary_present:
@@ -1298,6 +1305,7 @@ qubes_gui_hud_xsession:
     - group: root
     - mode: '0644'
     - require:
+      - sls: qubes_gui.hud.font
       - cmd: qubes_gui_hud_official_i3_binary_present
       - file: qubes_gui_hud_i3_config
       - file: qubes_gui_hud_rofi_theme

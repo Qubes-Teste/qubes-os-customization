@@ -14,6 +14,8 @@ required_entries=(
     i3/rollback.sls
     hud/init.sls
     hud/rollback.sls
+    hud/font.sls
+    hud/font-rollback.sls
     guest_hud/init.sls
     guest_hud/map.jinja
     guest_hud/rollback.sls

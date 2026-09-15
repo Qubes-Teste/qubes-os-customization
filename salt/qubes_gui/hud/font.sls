@@ -1,11 +1,12 @@
-{# Optional native font trial. Default no-op; no packages or runtime helper. #}
+{# Final HUD pair. Stock Fontconfig; no packages or runtime helper here. #}
 {% set rollback = font_rollback|default(false) %}
 {% set config = salt['pillar.get']('qubes_gui:hud:font', {}) %}
 {% set cfg = config if config is mapping else {} %}
-{% set family = cfg.get('family', '') %}
-{% set monospace_family = cfg.get('monospace_family', '') %}
+{% set family = cfg.get('family', 'Zen Dots') %}
+{% set monospace_family = cfg.get('monospace_family', 'White Rabbit') %}
 {% set preview_qube = cfg.get('preview_qube', '') %}
 {% set marker = 'Qubes HUD managed file. Owner: salt/qubes_gui/hud/font.' %}
+{# Keep the original owned path so upgrades need no directory migration. #}
 {% set font_root = '/usr/share/qubes-hud-font-trial' %}
 {% set owner_file = font_root ~ '/.qubes-hud-owner' %}
 {% set owner_text = marker ~ '\n' %}
@@ -15,31 +16,31 @@
     'Neuropol': 'neuropol', 'Johnny Fever': 'johnny-fever',
     'Zen Dots': 'zen-dots', 'Orbitron': 'orbitron', 'Wallpoet': 'wallpoet',
     'White Rabbit': 'white-rabbit'} %}
-{# Each fixed entry is source path, SHA-256, byte size. Keep old entries when
-   adding a family so its installed files remain verifiable during switching. #}
-{% set cc0 = ['typodermic-cc0/CC0-1.0.txt',
+{# Entries are source, SHA-256, byte size. None means retired: recognize only
+   for safe cleanup, never install. Pins derive from the d94b359 trial state. #}
+{% set cc0 = [none,
     'a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499', 7048] %}
 {% set fonts = {
     'Xolonium': {
-        'Xolonium-Regular.otf': ['xolonium/Xolonium-Regular.otf',
+        'Xolonium-Regular.otf': [none,
             'b1a23611ac3730b88fa80f3712ee2e50250f79d5b43cd289979faf4454fd9db4', 215648],
-        'Xolonium-Bold.otf': ['xolonium/Xolonium-Bold.otf',
+        'Xolonium-Bold.otf': [none,
             '201472d072b25d3d66c8d0018b2f78b20c2c7f85b83c1f462b38975f8c6d3cb3', 217288],
-        'Xolonium-LICENSE.txt': ['xolonium/LICENSE.txt',
+        'Xolonium-LICENSE.txt': [none,
             'ff0ce4c1d38b297d26fd24a4f27d1e650adec94c6b21ed1a981d967ce3c9c51e', 4447]
     },
     'Induction': {
-        'Induction.otf': ['typodermic-cc0/Induction.otf',
+        'Induction.otf': [none,
             'e745deeb0d9d9f49ef60df6a9b5e7723c109809e954a8d1fd120dd66443f75e8', 27164],
         'Typodermic-CC0-1.0.txt': cc0
     },
     'Neuropol': {
-        'Neuropol.otf': ['typodermic-cc0/Neuropol.otf',
+        'Neuropol.otf': [none,
             '5b6b7b0536019ebda9c73c48dd1f71ae079a11ae7e3590fd4017f5759f338fc5', 51656],
         'Typodermic-CC0-1.0.txt': cc0
     },
     'Johnny Fever': {
-        'Johnny-Fever.otf': ['typodermic-cc0/Johnny-Fever.otf',
+        'Johnny-Fever.otf': [none,
             '95754e0775367dd1415885f6450d4d11d6319497d591b958e2c3e43ca98d0e8a', 29556],
         'Typodermic-CC0-1.0.txt': cc0
     },
@@ -50,15 +51,15 @@
             '31b461a9de7f5b4ceb988b01d6ce4d9318180394cb5dacff5bf08c557f3cb7a0', 4386]
     },
     'Orbitron': {
-        'Orbitron-Variable.ttf': ['google-fonts/orbitron/Orbitron-Variable.ttf',
+        'Orbitron-Variable.ttf': [none,
             'f42db2dd16e642258e35782916eceb1dcdbea06fb958d77ad71dc5963587e8fd', 38576],
-        'OFL.txt': ['google-fonts/orbitron/OFL.txt',
+        'OFL.txt': [none,
             'ab609b0e110d622435ff337cdf233288556e011bbf9bd0550be98846c0630819', 4426]
     },
     'Wallpoet': {
-        'Wallpoet-Regular.ttf': ['google-fonts/wallpoet/Wallpoet-Regular.ttf',
+        'Wallpoet-Regular.ttf': [none,
             '0d8dc36abe195fa455a5a9f60a29f0aa29c7404bf880a67ec71f047dabefb02b', 39904],
-        'OFL.txt': ['google-fonts/wallpoet/OFL.txt',
+        'OFL.txt': [none,
             'bddfe669338d0dbc24c15ccd31dbf5c101a213da38049c24baca9ccb7fde45a4', 4400]
     },
     'White Rabbit': {
@@ -70,89 +71,47 @@
             '8e2c07766aa552604fbd15688f424a318f7993318e3c41ad144d66d2cb7d2a21', 929]
     }
 } %}
-{% macro font_config(name) -%}
-<?xml version="1.0"?>
-<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
-<!-- {{ marker }} -->
-<fontconfig>
-  <dir>{{ font_root }}/{{ directories[name] }}</dir>
-  <match target="pattern">
-    <test name="family" qual="first" compare="not_contains"><string>Symbol</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>Emoji</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>Awesome</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>Icon</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>Dingbat</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>D050000L</string></test>
-    <edit name="family" mode="prepend_first" binding="strong"><string>{{ name }}</string></edit>
-  </match>
-</fontconfig>
-{%- endmacro %}
-{# Keep the original single-family XML byte-identical for migration. #}
-{% macro split_font_config(name, mono) -%}
-<?xml version="1.0"?>
-<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
-<!-- {{ marker }} -->
-<fontconfig>
-  <dir>{{ font_root }}/{{ directories[name] }}</dir>
-  <dir>{{ font_root }}/{{ directories[mono] }}</dir>
-  <alias><family>{{ mono }}</family><default><family>monospace</family></default></alias>
-  <alias><family>Noto Sans Mono</family><default><family>monospace</family></default></alias>
-  <alias><family>Droid Sans Mono</family><default><family>monospace</family></default></alias>
-  <alias><family>DejaVu Sans Mono</family><default><family>monospace</family></default></alias>
-  <alias><family>Fira Code</family><default><family>monospace</family></default></alias>
-  <alias><family>Hack</family><default><family>monospace</family></default></alias>
-  <match target="pattern">
-    <test name="spacing" compare="more_eq"><const>dual</const></test>
-    <edit name="family" mode="append"><string>monospace</string></edit>
-  </match>
-  <match target="pattern">
-    <test name="family" qual="first" compare="not_contains"><string>Symbol</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>Emoji</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>Awesome</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>Icon</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>Dingbat</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>D050000L</string></test>
-    <test name="family" qual="all" compare="not_eq"><string>monospace</string></test>
-    <edit name="family" mode="prepend" binding="strong"><string>{{ name }}</string></edit>
-  </match>
-  <match target="pattern">
-    <test name="family" qual="first" compare="not_contains"><string>Symbol</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>Emoji</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>Awesome</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>Icon</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>Dingbat</string></test>
-    <test name="family" qual="first" compare="not_contains"><string>D050000L</string></test>
-    <test name="family" qual="any" compare="eq"><string>monospace</string></test>
-    <edit name="family" mode="prepend" binding="strong"><string>{{ mono }}</string><string>Noto Sans Mono</string></edit>
-  </match>
-</fontconfig>
-{%- endmacro %}
-{% set known = namespace(files={}, selectors={}) %}
+{# Exact prior selector hashes permit migration without retaining trial XML. #}
+{% set selectors = {
+    '7cf4f201f0886a835c866d4cdae4da069d22aaaec7f606c9ae5f00f2aaa8a27b': ['Xolonium'],
+    '14f13f330c59e4c60c0372a57c0ecec4ac49692706b7251b5dbd535db7c0bbef': ['Xolonium', 'White Rabbit'],
+    'd8c7fa52663c7cacca5bb663cc011984e49d7cd9d96992ecfe42a112e6a30f54': ['Induction'],
+    'b876812b405c9a4dfb3496bd25e14b4c028377f4a36b854ad1841952cccc9a65': ['Induction', 'White Rabbit'],
+    'f2a4507c94ece988988fa7f31f7959cca58b67bcf56bd6ae51e2319ba1170fd5': ['Neuropol'],
+    'e869549db6765a6ed8625bb1779dfed74aa67e1f81c8ccbd32c27d068a2eeaed': ['Neuropol', 'White Rabbit'],
+    '876fbfb07c6dd25a2c1575d60155f989962e5e087859de38b056b84b3e211df2': ['Johnny Fever'],
+    'd3b2a3cb91ceab90503b67af84733c4937d156dff0a18a277cde5e220bc9c4c9': ['Johnny Fever', 'White Rabbit'],
+    '0701d73823bdc6cb7a27d674e5b9044d0dedd3a79ddbbe6a1c1357077192c8e1': ['Zen Dots'],
+    '9ea0efe661c24a72885284579e0f8f62cf2084b2b796c05bc4e8c8465bfec89a': ['Zen Dots', 'White Rabbit'],
+    '2b1955ebba35d9605b2d3be8914401126c38177f6763804e19de4c005326240a': ['Orbitron'],
+    '95c01768f001a6da7062f69c17ca324f67d56842ba0d7c59f36df537c4d1186f': ['Orbitron', 'White Rabbit'],
+    '90e5d65d5da0b793e7f4986f49beb02729b449437575e79d39cc3a8ab065cd23': ['Wallpoet'],
+    '9908288e19e7682bcaa0a71b67707b7fd1b5bf78b92c3b1a26e68322c9b9e473': ['Wallpoet', 'White Rabbit'],
+    '08b773621f9713162581f839d67401d9397e870d9be8e88f35e67a42089a99f8': ['White Rabbit'],
+    'a3e8ffcac66629337df0490f79d1a9bb5a3e2cf9712fb940fd0b1542b5486e0a': ['White Rabbit', 'White Rabbit']
+} %}
+{% set known = namespace(files={}, install={}, retired={}) %}
 {% for name, files in fonts.items() %}
   {% for filename, asset in files.items() %}
-    {% do known.files.update({directories[name] ~ '/' ~ filename: asset}) %}
+    {% set path = directories[name] ~ '/' ~ filename %}
+    {% do known.files.update({path: asset}) %}
+    {% if asset[0] %}
+      {% do known.install.update({path: asset}) %}
+    {% else %}
+      {% do known.retired.update({path: asset}) %}
+    {% endif %}
   {% endfor %}
-  {% do known.selectors.update({font_config(name) ~ '\n': [name],
-      split_font_config(name, 'White Rabbit') ~ '\n': [name, 'White Rabbit']}) %}
 {% endfor %}
 
 {% if config is not mapping or family is not string or monospace_family is not string
     or preview_qube is not string %}
 qubes_gui_hud_font_invalid:
   test.fail_without_changes:
-    - name: Set family, optional monospace_family and optional preview_qube as strings under qubes_gui:hud:font.
-{% elif monospace_family not in ['', 'White Rabbit'] or (monospace_family and not family) %}
-qubes_gui_hud_font_monospace_invalid:
+    - name: Font settings must be a mapping of strings; preview_qube is an optional exact AppVM name.
+{% elif not rollback and (family != 'Zen Dots' or monospace_family != 'White Rabbit') %}
+qubes_gui_hud_font_choice_retired:
   test.fail_without_changes:
-    - name: Select a primary family and use White Rabbit or an empty string for monospace_family.
-{% elif not family %}
-qubes_gui_hud_font_disabled:
-  test.nop:
-    - name: No optional HUD font trial selected.
-{% elif family not in fonts %}
-qubes_gui_hud_font_unknown:
-  test.fail_without_changes:
-    - name: The selected font family has no committed and verified trial assets.
+    - name: HUD fonts are now Zen Dots and White Rabbit. Remove obsolete trial family settings.
 {% else %}
 {% set release = grains.get('osrelease', '')|string %}
 {% set dom0 = grains.get('virtual') == 'Qubes'
@@ -178,7 +137,7 @@ qubes_gui_hud_font_target_refused:
 {# Native lstat st_mode includes type and special bits: directory 0755=16877,
    directory 0555=16749, regular file 0644=33188. Exact equality also rejects
    symlinks, devices, sockets and special permission bits in one local check. #}
-{% set safe = namespace(value=true, files={}) %}
+{% set safe = namespace(value=true, files={}, directories={}) %}
 {% for path in ['/', '/usr', '/usr/share', '/etc', '/etc/fonts', '/etc/fonts/conf.d'] %}
   {% set st = salt['file.lstat'](path) %}
   {% if not st or st.get('st_uid') != 0 or st.get('st_gid') != 0
@@ -206,6 +165,7 @@ qubes_gui_hud_font_target_refused:
   {% for name, directory in directories.items() %}
     {% set path = font_root ~ '/' ~ directory %}
     {% set st = salt['file.lstat'](path) %}
+    {% do safe.directories.update({directory: st}) %}
     {% if st %}
       {% if st.get('st_mode') != 16877 or st.get('st_uid') != 0 or st.get('st_gid') != 0 %}
         {% set safe.value = false %}
@@ -236,9 +196,9 @@ qubes_gui_hud_font_target_refused:
         or st.get('st_nlink') != 1 or st.get('st_size', 0) > 8192 %}
       {% set safe.value = false %}
     {% else %}
-      {% set active_selector = salt['file.read'](selector) %}
-      {% if active_selector not in known.selectors %}{% set safe.value = false %}{% endif %}
-      {% for name in known.selectors.get(active_selector, []) if not rollback %}
+      {% set active_selector = salt['file.get_hash'](selector, 'sha256') %}
+      {% if active_selector not in selectors %}{% set safe.value = false %}{% endif %}
+      {% for name in selectors.get(active_selector, []) if not rollback %}
         {% for filename in fonts[name] %}
           {% if not safe.files.get(directories[name] ~ '/' ~ filename) %}
             {% set safe.value = false %}
@@ -295,7 +255,17 @@ qubes_gui_hud_font_collision:
 qubes_gui_hud_font_runtime_missing:
   test.fail_without_changes:
     - name: The stock desktop Fontconfig cache utility is required; no package is installed by this state.
-{% elif rollback %}
+{% else %}
+{% set cleanup = namespace(files=[], directories=[]) %}
+{% for name in (known.files if rollback else known.retired) %}
+  {% if safe.files.get(name) %}{% do cleanup.files.append(name) %}{% endif %}
+{% endfor %}
+{% for name, directory in directories.items() %}
+  {% if (rollback or name not in ['Zen Dots', 'White Rabbit']) and safe.directories.get(directory) %}
+    {% do cleanup.directories.append(directory) %}
+  {% endif %}
+{% endfor %}
+{% if rollback %}
 {% if browser.enabled %}
 qubes_gui_hud_font_browser_removed:
   file.absent:
@@ -308,21 +278,6 @@ qubes_gui_hud_font_selector_removed:
     - require:
       - file: qubes_gui_hud_font_browser_removed
 {% endif %}
-{% for name in known.files %}
-qubes_gui_hud_font_removed_{{ loop.index }}:
-  file.absent:
-    - name: {{ font_root }}/{{ name }}
-    - require:
-      - file: qubes_gui_hud_font_selector_removed
-{% endfor %}
-qubes_gui_hud_font_cache:
-  cmd.run:
-    - name: /usr/bin/fc-cache --force
-    - onchanges:
-      - file: qubes_gui_hud_font_selector_removed
-{% for name in known.files %}
-      - file: qubes_gui_hud_font_removed_{{ loop.index }}
-{% endfor %}
 {% else %}
 qubes_gui_hud_font_owner:
   file.managed:
@@ -333,17 +288,17 @@ qubes_gui_hud_font_owner:
     - mode: '0644'
     - dir_mode: '0755'
     - makedirs: true
-{% for directory in directories.values() %}
-qubes_gui_hud_font_directory_{{ directory }}:
+{% for family in ['Zen Dots', 'White Rabbit'] %}
+qubes_gui_hud_font_directory_{{ directories[family] }}:
   file.directory:
-    - name: {{ font_root }}/{{ directory }}
+    - name: {{ font_root }}/{{ directories[family] }}
     - user: root
     - group: root
     - mode: '0755'
     - require:
       - file: qubes_gui_hud_font_owner
 {% endfor %}
-{% for name, asset in known.files.items() %}
+{% for name, asset in known.install.items() %}
 qubes_gui_hud_font_asset_{{ loop.index }}:
   file.managed:
     - name: {{ font_root }}/{{ name }}
@@ -359,19 +314,19 @@ qubes_gui_hud_font_asset_{{ loop.index }}:
 qubes_gui_hud_font_hashes:
 {% if opts.get('test', false) %}
   test.nop:
-    - name: Apply will verify the staged font SHA-256 values before enabling the selected family.
+    - name: Apply will verify the staged font SHA-256 values before enabling the HUD pair.
 {% else %}
   test.fail_without_changes:
     - name: Font assets must match their pinned SHA-256 before Fontconfig can load them.
 {% endif %}
     - require:
-{% for name in known.files %}
+{% for name in known.install %}
       - file: qubes_gui_hud_font_asset_{{ loop.index }}
 {% endfor %}
 {% if not opts.get('test', false) %}
     - unless: |
         /usr/bin/sha256sum --check --strict --status <<'QUBES_HUD_FONT_SHA256'
-{% for name, asset in known.files.items() %}
+{% for name, asset in known.install.items() %}
         {{ asset[1] }}  {{ font_root }}/{{ name }}
 {% endfor %}
         QUBES_HUD_FONT_SHA256
@@ -379,7 +334,7 @@ qubes_gui_hud_font_hashes:
 qubes_gui_hud_font_selector:
   file.managed:
     - name: {{ selector }}
-    - contents: {{ ((split_font_config(family, monospace_family) if monospace_family else font_config(family)) ~ '\n')|tojson }}
+    - source: salt://qubes_gui/hud/files/fontconfig.conf
     - user: root
     - group: root
     - mode: '0644'
@@ -398,13 +353,43 @@ qubes_gui_hud_font_browser:
     - require:
       - file: qubes_gui_hud_font_selector
 {% endif %}
+{% endif %}
+{# Select the verified final pair before retiring any previously active files.
+   rmdir is nonrecursive. Retain the owned root/marker on rollback so an
+   interrupted cleanup never leaves an unmarked directory that blocks retry. #}
+{% for name in cleanup.files %}
+qubes_gui_hud_font_removed_{{ loop.index }}:
+  file.absent:
+    - name: {{ font_root }}/{{ name }}
+    - require:
+      - file: qubes_gui_hud_font_selector{{ '_removed' if rollback else '' }}
+{% endfor %}
+{% for directory in cleanup.directories %}
+qubes_gui_hud_font_directory_removed_{{ directory }}:
+  cmd.run:
+    - name: /usr/bin/rmdir -- {{ font_root }}/{{ directory }}
+    - onlyif: /usr/bin/test -d {{ font_root }}/{{ directory }}
+    - require:
+      - file: qubes_gui_hud_font_selector{{ '_removed' if rollback else '' }}
+{% for name in cleanup.files %}
+      - file: qubes_gui_hud_font_removed_{{ loop.index }}
+{% endfor %}
+{% endfor %}
 qubes_gui_hud_font_cache:
   cmd.run:
     - name: /usr/bin/fc-cache --force
     - onchanges:
-      - file: qubes_gui_hud_font_selector
-{% for name in known.files %}
+      - file: qubes_gui_hud_font_selector{{ '_removed' if rollback else '' }}
+{% if not rollback %}
+{% for name in known.install %}
       - file: qubes_gui_hud_font_asset_{{ loop.index }}
+{% endfor %}
+{% endif %}
+{% for name in cleanup.files %}
+      - file: qubes_gui_hud_font_removed_{{ loop.index }}
+{% endfor %}
+{% for directory in cleanup.directories %}
+      - cmd: qubes_gui_hud_font_directory_removed_{{ directory }}
 {% endfor %}
 {% endif %}
 {% endif %}

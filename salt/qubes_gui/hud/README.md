@@ -5,6 +5,12 @@ official Qubes-packaged `/usr/bin/i3`. It does not remove the standard i3
 session, restart LightDM, or reload the currently running i3 process. The selected session takes effect at
 the next logout/login.
 
+The standard apply includes `qubes_gui.hud.font`: Zen Dots supplies interface
+text and White Rabbit supplies terminals, editors and other monospace text.
+The bundled pair needs no font pillar or separate apply. Native Fontconfig
+rules cover the stock font requests used by the HUD and VS Code; existing
+applications can retain cached fonts until their next normal restart.
+
 The complete title, including the trusted `[qube-name]` descriptor, uses the
 qube's label color through the official `client.* <label>` configuration.
 The normal window frame remains on the shared black/cyan HUD palette.
@@ -535,6 +541,9 @@ The runtime packages are `rofi`, `feh`, `picom`, and
 package so rollback can remove it; a Picom package that predates the HUD is
 never claimed or removed. The shared Breeze package is retained on rollback,
 like Rofi and Feh.
+The bundled fonts add no package dependency or network fetch. The stock
+graphical target must already provide Fontconfig and `/usr/bin/fc-cache`;
+the font state verifies that prerequisite before changing its files.
 Supported pillar keys are `qubes_gui:hud:desktop_user`, `desktop_group`, and
 `package_transport` (`auto`, `direct-dom0`, or `qubes-updatevm`).
 
@@ -637,7 +646,9 @@ Rollback selects the packaged `i3` session for the next login, restores the
 include-only `~/.config/i3/config`, and removes only owner-marked HUD files,
 including the Xfce Terminal profile and GTK icon settings, plus the HUD
 XSession, wallpaper, helpers, Picom config and shader, generated cyan icon
-tree, and compatibility launcher. If the old custom i3 process is still
+tree, and compatibility launcher. The included `qubes_gui.hud.font-rollback`
+also removes the owned font selector and bundled font files, preserving
+distribution fonts. If the old custom i3 process is still
 running, rollback retains its verified launcher and record to keep its restart path
 valid; a later rollback can remove them once that process has exited.
 The icon manager validates the entire generated tree against its ownership

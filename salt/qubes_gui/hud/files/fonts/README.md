@@ -1,34 +1,19 @@
-# Bundled font trials
+# Bundled HUD fonts
 
-These are unchanged font files supplied by their authors. They are data for
-the distribution's existing Fontconfig/FreeType stack, not custom application
-binaries. Salt stages the bundled files from this repository and registers
-only the selected family or proportional/monospace pair after a native
-SHA-256 check of all staged font and notice files. It makes no font download
-or source build on the target machine.
+The HUD uses **Zen Dots** for proportional interface text and **White Rabbit**
+for terminals, editors and other monospace text. Salt installs the unchanged
+font files and their notices from this repository, verifies their pinned
+SHA-256 hashes, then registers the pair with the existing Fontconfig/FreeType
+stack. Deployment downloads no fonts and adds no packages or runtime helpers.
 
-| Trial order | Family | License | Source |
+| Role | Family | License | Source |
 | --- | --- | --- | --- |
-| 1 | Xolonium 4.3, Regular and Bold | SIL Open Font License 1.1 | [Severin Meyer](https://sev.dev/fonts/xolonium/) |
-| 2 | Induction, Regular | CC0 1.0 | [Typodermic public-domain collection](https://typodermicfonts.com/public-domain/) |
-| 3 | Neuropol, Regular | CC0 1.0 | Same publisher collection |
-| 4 | Johnny Fever, Regular | CC0 1.0 | Same publisher collection |
-| 5 | Zen Dots, Regular | SIL Open Font License 1.1 | [Google Fonts: Zen Dots](https://github.com/google/fonts/tree/809e4d8b8d7e9364a914909bb777679606c178b8/ofl/zendots) |
-| 6 | Orbitron, variable weight 400–900 | SIL Open Font License 1.1 | [Google Fonts: Orbitron](https://github.com/google/fonts/tree/809e4d8b8d7e9364a914909bb777679606c178b8/ofl/orbitron) |
-| 7 | Wallpoet, Regular | SIL Open Font License 1.1 | [Google Fonts: Wallpoet](https://github.com/google/fonts/tree/809e4d8b8d7e9364a914909bb777679606c178b8/ofl/wallpoet) |
-| 8 | White Rabbit, Regular | Author's MIT-style licence | [Matthew Welch](https://squaregear.net/fonts/whitrabt.html) |
+| Proportional | Zen Dots, Regular | SIL Open Font License 1.1 | [Google Fonts: Zen Dots](https://github.com/google/fonts/tree/809e4d8b8d7e9364a914909bb777679606c178b8/ofl/zendots) |
+| Monospace | White Rabbit, Regular | Author's MIT-style licence | [Matthew Welch](https://squaregear.net/fonts/whitrabt.html) |
 
-Xolonium is openly licensed rather than public domain. Its license permits
-bundling with this project; its copyright and complete license are retained.
-The Typodermic archives each include the same `read-this.html`, which expressly
-dedicates the included fonts to CC0. That guide and the official CC0 legal
-text are retained under `typodermic-cc0/`.
-
-The three Google Fonts families retain their original copyright/OFL notices
-and catalog metadata under `google-fonts/`. Orbitron's external filename is
-`Orbitron-Variable.ttf` because brackets in the upstream filename are excluded
-by the existing Salt sync path policy. Its variable font bytes and internal
-name are unchanged; stock rendering supplies the requested weight.
+Zen Dots retains its original font, copyright/OFL notice and catalog metadata
+under `google-fonts/zen-dots/`. Its licence permits bundling with this project;
+the complete copyright and licence text accompany the installed font.
 
 White Rabbit retains the original `whitrabt.ttf`, `license.txt` and
 `whitrabt.txt` from the author's HTTPS download. The archive's licence grants
@@ -40,15 +25,13 @@ are not the licence for these downloaded files.
 
 Each collection's `PROVENANCE.json` records the upstream archive or pinned
 repository commit, source URLs, exact file hashes and acquisition details.
-The files were fetched in a networked maintainer qube and selectively transferred to
-this repository; none were compiled, converted, subsetted or renamed
-internally. Hashes pin the reviewed bytes; they do not establish a security
-audit of the font files. Font parsing remains the responsibility of the stock,
-security-updated rendering libraries.
+The files were fetched in a networked maintainer qube and selectively
+transferred to this repository; neither font was compiled, converted,
+subsetted or renamed. Hashes pin the reviewed bytes; they do not establish a
+security audit of the font files. Font parsing remains the responsibility of
+the stock, security-updated rendering libraries.
 
-The first seven display faces are proportional. Terminals still use their
-normal fixed cell grid, so spacing can look wider than with the original
-monospace face.
-White Rabbit is monospace and supplies basic Latin characters, with distinct
-uppercase and lowercase forms. Existing distribution fonts remain available
-for missing characters, including German accents and box drawing.
+White Rabbit supplies basic Latin characters, with distinct uppercase and
+lowercase forms. Existing distribution fonts supply missing characters,
+including German accents and box drawing. Native terminal cell spacing,
+symbol fonts and Unicode fallback remain in use.

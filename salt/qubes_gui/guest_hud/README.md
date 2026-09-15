@@ -10,8 +10,9 @@ The state supplies:
 - the same black, glass-blue, cyan, text, and alert palette used by dom0;
 - locked system Xfce/XSettings and dconf selections for existing and future
   AppVM homes;
-- the generated thin cyan-glyph `Qubes-HUD-Cyan` icon theme with Noto Sans and
-  Noto Sans Mono defaults;
+- the generated thin cyan-glyph `Qubes-HUD-Cyan` icon theme;
+- bundled Zen Dots for interface text and White Rabbit for terminals, editors
+  and other monospace text, with Noto fallback for missing characters;
 - a matching Xfce Terminal palette when a user has no explicit terminal
   configuration;
 - a root-owned Qt 5 palette scoped to Whonix's Sdwdate service, its child Tor
@@ -39,9 +40,10 @@ cyan glyphs on exact-black canvases for reliable XEmbed rendering.
 The outer Qubes frame, rounded clipping, label-colored window title, transparency,
 blur, and glow remain in dom0. Installing a compositor or window manager in a
 TemplateVM would not improve seamless guest windows and is intentionally out
-of scope. Ordinary Firefox page content has a separate opt-in state described
-below. Electron interfaces and applications that draw their own complete
-interface remain separate work. Absolute application
+of scope. Ordinary Firefox page colors have a separate opt-in state described
+below. Electron palette customization and applications that draw their own
+complete interface remain separate work; native font rules cover stock system
+font requests, including VS Code's defaults. Absolute application
 icon paths, thumbnails, tray images, `_NET_WM_ICON` title-bar images, and other
 client-provided pixels likewise bypass freedesktop icon-theme lookup and are
 not recolored by this test. The six package-owned images selected by Sdwdate's
@@ -126,6 +128,18 @@ their scoped Qt palette.
 
 ## Apply to an existing TemplateVM
 
+The standard apply includes `qubes_gui.hud.font` and selects the fixed Zen
+Dots/White Rabbit pair without a font pillar or separate command. Existing
+Noto package prerequisites provide Unicode fallback before font activation.
+The stock graphical template must already provide Fontconfig and
+`/usr/bin/fc-cache`; bundled font installation adds no package or download.
+
+For an installed ordinary distribution Firefox, the included font state also
+sets an editable default to use system fonts for pages. Existing profile
+choices take precedence. It does not write Tor Browser or browser profiles;
+the optional page-color state below remains separate. Applications can keep
+cached fonts until their next normal restart.
+
 Synchronize, render, and dry-run first:
 
 ```sh
@@ -173,6 +187,11 @@ sudo qubesctl --skip-dom0 --targets=debian-13-xfce \
 sudo qubesctl --skip-dom0 --targets=debian-13-xfce \
   state.sls qubes_gui.guest_hud.rollback saltenv=user
 ```
+
+The included `qubes_gui.hud.font-rollback` removes the owned font selector,
+bundled font files and ordinary Firefox font default. Distribution font
+packages and user browser choices remain intact. Remove the optional Firefox
+page-color state separately if desired.
 
 Dependent qubes pick up either change at their next restart; the state does not
 restart them automatically.

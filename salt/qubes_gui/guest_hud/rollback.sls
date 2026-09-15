@@ -343,6 +343,9 @@ qubes_gui_guest_hud_rollback_unmanaged_target_refused:
 
 {% else %}
 
+include:
+  - qubes_gui.hud.font-rollback
+
 {% for suffix, path in [
     ('early_session', guest_hud_platform['early_session']),
     ('late_session', guest_hud_platform['late_session']),
@@ -590,6 +593,7 @@ qubes_gui_guest_hud_rollback_complete:
         Qubes HUD guest selection and assets were removed. Existing user
         preferences and shared runtime packages were left untouched.
     - require:
+      - sls: qubes_gui.hud.font-rollback
       - file: qubes_gui_guest_hud_rollback_remove_early_session
       - file: qubes_gui_guest_hud_rollback_remove_late_session
       - file: qubes_gui_guest_hud_rollback_remove_theme_owner

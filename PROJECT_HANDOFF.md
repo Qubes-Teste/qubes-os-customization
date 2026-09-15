@@ -2206,7 +2206,12 @@ The installed eight-default file remained unchanged. Evidence:
 changed in the repository; the previously audited deployment entrypoints,
 dependencies and Salt states are unchanged.
 
-## Optional stock-rendered font trials (2026-09-13)
+## Optional stock-rendered font trials (2026-09-13, historical)
+
+The font trial sections through September 14 describe superseded development
+steps. The September 15 finalization below is authoritative for bundled
+assets, default deployment and rollback; rejected font files are no longer
+shipped.
 
 The user selected four font trials in this order: Xolonium, Induction,
 Neuropol, Johnny Fever. The shared `qubes_gui.hud.font` state and its
@@ -2767,3 +2772,125 @@ during the conversation. Other already-running qubes adopt their persistent
 template font selection on their next normal start. A full reboot refreshes
 both dom0 applications and running qubes, but is not required for individual
 application or dashboard font changes.
+
+### Final default font setup and removal of trial assets (2026-09-15)
+
+The user accepted Zen Dots and White Rabbit, requested removal of every other
+bundled font, and asked to finalize the default Salt setup and commit it.
+Only these two font binaries now remain in the repository. Seventeen rejected
+font/notice/provenance files totaling 900,069 bytes were removed, covering
+Xolonium, Induction, Neuropol, Johnny Fever, Orbitron and Wallpoet. Zen Dots and
+White Rabbit retain their exact upstream font and notice bytes. Google Fonts
+provenance now contains only the original Zen Dots records; White Rabbit's
+provenance is unchanged. Git history retains the earlier trial assets.
+
+Both normal `qubes_gui.hud` and `qubes_gui.guest_hud` applies now include
+`qubes_gui.hud.font`, which always selects the final pair by default. The
+font-only state remains available for maintenance, but no family-selection
+pillar or separate step is needed during normal deployment. The old explicit
+Zen Dots/White Rabbit pair is accepted for compatibility; obsolete trial
+choices are refused with a removal instruction. An explicitly named AppVM
+preview is still supported without making it a persistent deployment path.
+The existing template provisioning wrapper automatically receives the fonts
+through guest_hud, without another script, phase or package.
+
+The final Fontconfig rules are a fixed, auditable `files/fontconfig.conf`
+asset, byte-identical to the accepted selector (SHA-256
+`9ea0efe661c24a72885284579e0f8f62cf2084b2b796c05bc4e8c8465bfec89a`).
+They retain the validated proportional/monospace distinction, known native
+font aliases, symbol/emoji exemptions and stock fallback. The historical
+`/usr/share/qubes-hud-font-trial` pathname is retained solely to avoid an
+unnecessary owned-directory migration. It contains only the final two family
+directories after cleanup. No application font settings or font outlines
+were changed during finalization.
+
+Five font/notice files are installed and pass the existing strict runtime
+SHA-256 gate before the selector is enabled. The retired files remain only
+as names, hashes and sizes in the migration allowlist; their source fields
+are null and cannot enter the install list. Sixteen exact historical selector
+fingerprints are derived from the former XML in commit d94b359. They permit
+safe migration from any previously supported trial selector without retaining
+the trial-generating macros. An active family with missing files still
+refuses apply, while rollback accepts missing files as before.
+
+On upgrade, Salt validates all present owned files and directories, stages
+and verifies the final pair, installs its selector, and only then removes
+thirteen obsolete font/notice paths and six empty family directories. Directory
+cleanup uses stock nonrecursive rmdir. Unknown content, changed files,
+symlinks, hard links and foreign ownership cause refusal. Interrupted cleanup
+can resume against the now-active final selector. Both normal HUD rollbacks
+include font cleanup; the separate font rollback also remains available.
+Rollback removes the selector, optional ordinary Firefox font default,
+verified fonts/notices and empty family directories. It retains the empty
+owned root and marker so an interruption cannot leave an unmarked directory
+that prevents retry or reinstall. Distribution fonts and user preferences
+are outside the removal set.
+
+The existing runtime-package states precede the included font state. Dom0
+session activation and guest completion require successful font processing;
+rollback completion anchors require the included font rollback. Main-state
+platform and ownership refusals remain outside the include, so they cannot
+accidentally activate fonts on a rejected target. Stock graphical Qubes
+Fontconfig paths and fc-cache must already exist at render time. The guest
+HUD's already-declared Noto packages provide fallback glyphs; no new package
+or distribution support was added. Sync now requires both font state entry
+points; its existing ownership and stale-file pruning logic is unchanged.
+
+The machine rebooted between the September 14 preview and this finalization.
+The new Code process 4931 maps both Zen Dots and White Rabbit; the prior
+Xolonium-cache exception is therefore resolved. Existing font sizes, window
+layouts and application sessions are not changed by the cleanup. Applications
+with embedded fonts, unusual explicit font requests or text rendered as pixels
+remain outside what native Fontconfig can universally override. Ordinary
+Firefox retains its editable system-font default; Tor Browser and browser
+profiles are not modified.
+
+Native Salt validation covered 37 initial guard/migration cases, two final
+rollback/reapply/repeat cycles and seven default integration renders across
+dom0, Debian and Fedora. Clean/repeated applies, all historical selectors,
+partial cleanup and refusal of unknown, modified, linked or foreign-owned
+content passed. Requisite expansion produced valid acyclic graphs. Rollback
+cycles were rerun after retaining the owner/root; repeating a completed
+rollback or apply made no changes. Mutation fixtures used only owned temporary
+paths and installed tooling. The loaded dom0 package install, refresh and remove
+functions all resolve to qubes_dom0_update. Evidence is
+`/tmp/hud-fixed-font-validation/results.json`, tied to font.sls SHA-256
+`31d3e465bd07ae8516dc686343a6ec625843bc1959ffac473c6a81b5005b23f1`.
+
+The deployment audit covered 85 files and 15 executable entry points. It
+confirmed exactly two remaining font binaries, unchanged retained vendor
+bytes, no additional dependencies or runtime helpers, and no network fetch
+or source build added to deployment. The existing direct-dom0 maintainer
+override remains opt-in; the default remains Qubes' UpdateVM provider.
+Evidence is
+`/tmp/hud-font-asset-cleanup-27r9wwnk/final-entrypoint-audit.json`.
+
+The synced formula passed a full default dom0 dry run and actual HUD apply:
+101 states succeeded, with exactly 20 changes (13 retired files, six empty
+directories and the font cache). Independent verification checked the five
+remaining font/notice hashes and metadata, exact selector, native font matches,
+and Code's mapped fonts. All 14 application windows retained their original
+XIDs, frames, layout and marks. Evidence is `dom0-preview-final.json`,
+`dom0-apply.json` and `independent-dom0-validation.json` under
+`/tmp/hud-font-final/`.
+
+Full default guest_hud dry runs also passed on debian-13-xfce (62 states),
+whonix-gateway-18 (70) and whonix-workstation-18 (68). Each proposed exactly
+the same 20 retired-font cleanup/cache changes, with no failures or unrelated
+changes. These checks used Qubes' native TemplateVM management path and no
+font-selection pillar. Results and the normalized summary are
+`/tmp/hud-font-final/templates-preview.json` and
+`/tmp/hud-font-final/templates-preview-summary.json`.
+
+The actual template cleanup applied the same included font state directly,
+without repeating unchanged guest-theme processing or supplying a pillar.
+All 31 Debian states and all 30 states in each Whonix template succeeded;
+each target made exactly the expected 20 cleanup/cache changes. Apply stderr
+was empty. Independent result validation and qvm-ls confirmed success and
+that all three templates returned to their initial halted state. Evidence is
+`templates-apply.json`, `templates-apply-summary.json` and
+`independent-template-validation.json` under `/tmp/hud-font-final/`.
+Already-running AppVM root snapshots may retain unused retired font files
+until their next normal start; their selected pair is already Zen Dots and
+White Rabbit. No application, session or service qube was restarted for this
+cleanup, and no reboot is needed to preserve the accepted appearance.

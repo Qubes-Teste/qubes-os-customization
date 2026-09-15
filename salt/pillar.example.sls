@@ -21,11 +21,8 @@ qubes_gui:
     #   name: hud-test
     #   template: debian-13-xfce
     #   ready: false
-    # Optional shared qubes_gui.hud.font state for dom0 and each TemplateVM.
-    # A selected pair is retained across boots; no font downloads or packages.
-    # font:
-    #   family: Zen Dots
-    #   monospace_family: White Rabbit
+    # Zen Dots (interface) and White Rabbit (monospace) are included by default
+    # in the HUD and guest HUD states. No font-selection pillar is needed.
   # The guest state currently has safe fixed visual defaults. This section is
   # reserved for future toolkit-specific overrides.
   guest_hud: {}
