@@ -2894,3 +2894,36 @@ Already-running AppVM root snapshots may retain unused retired font files
 until their next normal start; their selected pair is already Zen Dots and
 White Rabbit. No application, session or service qube was restarted for this
 cleanup, and no reboot is needed to preserve the accepted appearance.
+
+### Stable top-panel clock width (2026-09-15)
+
+The user reported horizontal status-panel movement as proportional clock
+digits changed. The bar now requests `pango:Noto Sans Mono 9`, which the
+existing font rules resolve to White Rabbit. The global window-title font
+remains Noto Sans 9 / Zen Dots. This is one changed native i3 directive;
+bar height remains 30 pixels, with the existing colors, Qubes status program,
+tray and workspace provider. No helper, package or Fontconfig change was added.
+
+Installed qubes-i3status emits a fixed 19-character clock but provides no
+configuration for the i3bar protocol's min_width/align fields. A fixed clock
+block would require modifying its output. Monospace avoids that extra code.
+Other fields can still resize when their character count changes, such as a
+load value gaining an integer digit or the qube count changing wording.
+
+Native Pango rendering of seconds 00 through 09 at 9 points / 96 DPI measured
+138–145 pixels for the previous clock font and exactly 133 pixels for every
+White Rabbit sample. Official i3 accepted the candidate configuration. The
+default HUD Salt dry run and apply each passed all 82 states, changing only
+the saved i3 config. Installed and synced config hashes match the repository.
+The deployment audit found no new network/build commands, dependencies or
+runtime code; loaded package functions still use qubes_dom0_update.
+
+A normal `i3-msg reload` activated the font. The existing i3, i3bar and
+qubes-i3status processes remained alive, and i3bar maps the White Rabbit font.
+All application/workspace identities, geometry, layout, marks and focus were
+preserved. Native i3bar recreated only its dock surface with the same 30-pixel
+geometry; an initial comparison that included that surface's identity was
+therefore too broad. No application, window-manager or qube restart was needed.
+Evidence is under `/tmp/hud-bar-font-hho029cx/`, including
+`native-clock-widths.json`, `dry-run.json`, `apply.json` and
+`live-validation-final.json`; the audit is `/tmp/hud-bar-font-audit.json`.

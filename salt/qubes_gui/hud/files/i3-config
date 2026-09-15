@@ -28,7 +28,7 @@ set $dom0_terminal /usr/bin/xfce4-terminal
 set $desktop_autostart /usr/local/libexec/qubes-hud/hud-xdg-autostart
 ## VARS END ##
 
-# Font for window titles and the bar.
+# Proportional font for window titles; the status bar uses monospace below.
 font $font
 
 # xss-lock grabs a logind suspend inhibit lock and locks before suspend.
@@ -272,7 +272,8 @@ bar {
         tray_output primary
         status_command qubes-i3status
         workspace_command exec /usr/bin/python3 -B /usr/local/libexec/qubes-hud/hud-workspace --buttons
-        font $font
+        # White Rabbit via the HUD's monospace rules keeps clock digits stable.
+        font pango:Noto Sans Mono 9
 
         colors {
                 background         #000000

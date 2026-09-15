@@ -285,6 +285,9 @@ Absent buttons use i3bar's primary-output fallback. It does not poll, move
 windows or maintain empty workspaces. The initial tick event closes the
 subscription startup race; bar shutdown terminates and reaps the subscriber.
 Qubes status and tray handling remain with `qubes-i3status` and i3bar.
+The bar uses White Rabbit through the shared monospace font rules, keeping
+the clock's width constant as digits change. Window titles retain Zen Dots.
+Other status fields can still resize when their character count changes.
 
 Individual monitors can be reopened from the application launcher or with
 `gtk-launch qubes-hud-top`, `gtk-launch qubes-hud-xentop` and

@@ -276,8 +276,11 @@ existing Noto packages supply fallback glyphs; the standalone font state does
 not install packages.
 
 Native font rules cover the standard requests used by GTK/Qt interfaces,
-i3, terminals and VS Code's interface, editor and integrated terminal. White
-Rabbit has distinct letter case and covers basic Latin; German accents and
+i3, terminals and VS Code's interface, editor and integrated terminal. The
+top status panel uses White Rabbit so clock digits have equal width and do
+not shift neighboring status items. Window titles retain Zen Dots.
+
+White Rabbit has distinct letter case and covers basic Latin; German accents and
 other missing glyphs use installed monospace fallback fonts. Symbol and emoji
 fonts remain available. Applications with unusual explicit font requests,
 embedded fonts or text rendered as pixels can bypass these rules. Applications
