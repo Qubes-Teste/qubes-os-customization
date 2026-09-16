@@ -323,6 +323,8 @@ than the warm white-temperature adjustment commonly called night light.
 
 Open **HUD Night Light** in the application launcher to select Automatic,
 Day, Night or Change hours. Enter two 24-hour times, for example `21:00 08:00`.
+Day and Night are persistent overrides, including across reboots and Salt
+applies. Choose Automatic after a manual preview to resume scheduled changes.
 The interval includes its start and excludes its end; equal times are refused.
 Changing hours selects Automatic. The marked preferences file
 `~/.config/qubes-hud/night-light.ini` is preserved by subsequent Salt applies.

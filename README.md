@@ -208,6 +208,8 @@ takes effect at the next HUD login.
 from **21:00 to 08:00** local time, including every qube, website, image and
 Qubes label color. Open its application-launcher entry to change the hours
 or choose Automatic, Day or Night. Day restores the saved output colors.
+Day and Night stay selected across reboots; choose Automatic to resume the
+daily schedule.
 It uses a native systemd user timer and small Python/ctypes helpers with the
 already installed X11 libraries; no package or custom binary is added.
 Each active graphics output must expose XRandR's `CTM` property. The schedule

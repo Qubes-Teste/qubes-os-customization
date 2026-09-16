@@ -2973,3 +2973,29 @@ the native stream preview and `top-panel.png` are under
 geometry, workspace structure, focus and marks are preserved. The existing
 i3/bar processes remain intact, the previous status process exited, and one
 stock status process plus one filter share i3bar's native child process group.
+
+### Restore automatic night-light scheduling (2026-09-16)
+
+The user reported that night light was not working. At 08:02 CEST the saved
+preferences contained `mode = day`, with the correct 21:00–08:00 hours.
+The user timer was active and its minute service calls succeeded; HDMI-1
+supported CTM and correctly remained in normal colors under that override.
+An explicit Day selection bypasses the clock, and Salt's `replace: false`
+preserves it across applies and reboots. This explains the missing overnight
+activation without evidence of a timer or display-driver failure.
+
+The existing user-level `hud-night-light --mode auto` restored and persisted
+Automatic without changing the hours. The service then applied successfully,
+and status reported mode auto / desired day. The report arrived just after
+the 08:00 cutoff, so normal colors are expected until 21:00. No forced green
+preview or claim of physical nighttime output verification was made during
+this repair. Deployment defaults already select Automatic; no runtime code,
+unit, package or permission change was needed. Documentation now explicitly
+states that manual Day/Night overrides persist until Automatic is selected.
+Evidence is `/tmp/hud-night-auto-75xivbxb/`, containing the before/after
+preferences, status and successful service result.
+The default HUD dry run passed all 83 states with zero proposed changes,
+confirming Salt preserves the repaired setting. All 74 deployment source
+files remain byte-identical to the previous commit; this repair adds no code,
+dependency or network path. The existing UpdateVM-backed package state remains
+the default.
