@@ -20,6 +20,14 @@ required_entries=(
     guest_hud/map.jinja
     guest_hud/rollback.sls
     templates/hud.sls
+    templates/family/init.sls
+    templates/family/map.jinja
+    templates/family/scope.jinja
+    templates/family/base.sls
+    templates/family/agent.sls
+    templates/family/trader.sls
+    templates/family/files/user-dirs.conf
+    templates/family/files/user-dirs.dirs
 )
 
 fail() {

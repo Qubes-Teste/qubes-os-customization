@@ -1,0 +1,37 @@
+{# Identity only: package policy lives in the three role states. #}
+{% set settings = salt['pillar.get']('qubes_gui:templates:family', {}) %}
+{% set names = settings.get('names', {}) if settings is mapping else {} %}
+{% set valid = namespace(value=settings is mapping and names is mapping) %}
+{% set source = settings.get('source', 'debian-13-xfce')
+    if settings is mapping else '' %}
+{% set roles = {
+    'base': names.get('base', 'debian-13-hud-base'),
+    'agent': names.get('agent', 'debian-13-hud-agent'),
+    'trader': names.get('trader', 'debian-13-hud-trader')
+} if names is mapping else {} %}
+{% set letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ' %}
+{% set characters = letters ~ '0123456789_.-' %}
+{% set seen = [] %}
+{% for role in (names if names is mapping else {}) %}
+  {% if role not in roles %}{% set valid.value = false %}{% endif %}
+{% endfor %}
+{% for name in [source] + roles.values()|list %}
+  {% if name is not string or not name or name|length > 31
+      or name[0] not in letters or name in ['Domain-0', 'none', 'default']
+      or name.endswith('-dm') or name in seen %}
+    {% set valid.value = false %}
+  {% elif name is string %}
+    {% for character in name %}
+      {% if character not in characters %}{% set valid.value = false %}{% endif %}
+    {% endfor %}
+  {% endif %}
+  {% do seen.append(name) %}
+{% endfor %}
+{% set family = {
+    'source': source,
+    'names': roles,
+    'parents': {'base': source, 'agent': roles.get('base'), 'trader': roles.get('base')},
+    'tag': 'hud-template-family-managed',
+    'feature_prefix': 'vm-config.qubes-hud-family-',
+    'valid': valid.value
+} %}

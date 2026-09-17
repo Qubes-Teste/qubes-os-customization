@@ -1,0 +1,24 @@
+{# Native dom0-rendered Qubes pillar binds each guest to its family role. #}
+{% from 'qubes_gui/templates/family/map.jinja' import family with context %}
+{% set features = salt['pillar.get']('qubes:features', {}) %}
+{% set tags = salt['pillar.get']('qubes:tags', []) %}
+{% set role = features.get(family.feature_prefix ~ 'role', '')
+    if features is mapping else '' %}
+{% set vm_name = salt['cmd.run'](
+    ['/usr/bin/qubesdb-read', '/name'], python_shell=false,
+    ignore_retcode=true)|trim if salt['file.file_exists']('/usr/bin/qubesdb-read') else '' %}
+{% set vm_type = salt['cmd.run'](
+    ['/usr/bin/qubesdb-read', '/qubes-vm-type'], python_shell=false,
+    ignore_retcode=true)|trim if salt['file.file_exists']('/usr/bin/qubesdb-read') else '' %}
+{% set release = grains.get('osrelease', '')|string %}
+{% set major = grains.get('osmajorrelease', release.split('.')[0])|string %}
+{% set valid = family.valid and grains.get('kernel') == 'Linux'
+    and grains.get('virtual')|lower == 'xen' and grains.get('os') == 'Debian'
+    and major == '13' and grains.get('cpuarch') == 'x86_64'
+    and vm_type == 'TemplateVM' and salt['pillar.get']('qubes:type', '') == 'template'
+    and role is string and role in family.names
+    and tags is sequence and tags is not string
+    and family.tag in tags and vm_name == family.names[role]
+    and features.get(family.feature_prefix ~ 'name') == vm_name
+    and features.get(family.feature_prefix ~ 'source') == family.parents[role] %}
+{% set scope = {'role': role, 'valid': valid} %}

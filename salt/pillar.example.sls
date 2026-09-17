@@ -27,6 +27,14 @@ qubes_gui:
   # reserved for future toolkit-specific overrides.
   guest_hud: {}
   templates:
+    # Optional overrides for the separate qubes_gui.templates.family state.
+    # The defaults work with an installed, halted Debian 13 Xfce TemplateVM.
+    family:
+      source: debian-13-xfce
+      names:
+        base: debian-13-hud-base
+        agent: debian-13-hud-agent
+        trader: debian-13-hud-trader
     hud:
       # Example machine policy for qubes_gui.templates.hud. Do not copy these
       # names blindly; select a halted local source TemplateVM and a new target

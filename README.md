@@ -371,6 +371,45 @@ target name when changing source templates. See
 `salt/qubes_gui/guest_hud/README.md` for the exact scope, collision policy,
 validation, and rollback.
 
+### Debian Base, Agent and Trader templates
+
+The separate `qubes_gui.templates.family` state creates three Debian 13
+TemplateVMs and applies the common HUD, fonts and Firefox page defaults:
+
+| Template | Salt inheritance | Applications |
+| --- | --- | --- |
+| `debian-13-hud-base` | Shared Base policy | `pass`; LibreOffice and Thunderbird purged |
+| `debian-13-hud-agent` | Base + Agent | Complete Debian Git tool set and development CLI tools |
+| `debian-13-hud-trader` | Base + Trader | Debian Electrum |
+
+The Agent's upstream Codex, Hermes Agent, OpenClaw and signal-cli installation
+is pending a decision on the repository's dependency policy; the current Agent
+state supplies only its Debian CLI layer. See the
+[family instructions](salt/qubes_gui/templates/family/README.md).
+
+Agent and Trader independently include Base. Add shared packages to
+[base.sls](salt/qubes_gui/templates/family/base.sls), then apply the family again
+to update all three.
+Qubes filesystem clones alone do not propagate later Base changes.
+
+New private homes receive no automatic Desktop, Documents, Downloads, Music,
+Pictures, Public, Templates or Videos folders; native XDG locations point to
+the home directory. Only empty standard folders in the owned templates are
+removed. Existing documents and AppVM homes are preserved.
+
+With the default names and a halted `debian-13-xfce` source:
+
+```sh
+./scripts/sync-salt-formula.sh
+sudo qubesctl --targets=debian-13-hud-base,debian-13-hud-agent,debian-13-hud-trader \
+  state.sls qubes_gui.templates.family saltenv=user
+```
+
+The source and all targets must be halted. Existing targets are accepted only
+with the family's exact ownership, name, role and source records; names are
+configurable in pillar. Dependent AppVMs receive updates on their next start.
+The family is opt-in and is not created by an ordinary HUD theme apply.
+
 ### Optional Firefox page colors
 
 The separate `qubes_gui.guest_hud.firefox` state gives ordinary Firefox cyan

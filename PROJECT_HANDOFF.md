@@ -3074,3 +3074,112 @@ Apply stderr is empty. All three templates returned to their original halted
 state, and the running service qubes and hud-test were not restarted.
 The normalized template results are `templates-dry-run-summary.json` and
 `templates-apply-summary.json` in the live evidence directory above.
+
+
+### Debian Base/Agent/Trader template family (2026-09-17)
+
+The user requested three reproducible Debian templates, no standard XDG home
+folders, shared Base inheritance, and continued HUD styling. The new opt-in
+`qubes_gui.templates.family` state uses stock Qubes cloning and Salt includes;
+it adds no runtime helper. Defaults clone `debian-13-hud-base` from the halted
+`debian-13-xfce`, then clone `debian-13-hud-agent` and
+`debian-13-hud-trader` from Base. Both sibling profiles include Base every
+apply. Later Base changes propagate by reapplying Salt to all three; Qubes
+clones themselves do not propagate changes. Names/source are configurable at
+`qubes_gui:templates:family`, with exact identity binding and collision guards.
+
+The installed qubesctl implementation runs dom0 before discovering guest
+targets. Therefore a single native command can clone and configure all three;
+no new provisioning wrapper is required. Fresh test mode describes cloning
+without mutations, so new guests require a subsequent validation after actual
+dom0 creation. Native qvm-clone is used instead of the qvm.clone state wrapper,
+whose existing-target no-op could otherwise permit a race to ownership
+assignment. Cloning must succeed before features/tags are assigned. Existing
+names require halted TemplateVM class, managed tag, and exact name/role/source
+features. Guest scope checks QubesDB identity, native Qubes pillar and Debian
+13 x86_64. Interrupted cloning before identity assignment fails closed on
+retry; unknown VMs are never adopted or removed automatically.
+
+Base installs pass, purges all LibreOffice/Thunderbird source-family packages
+including UNO/OpenSymbol and registered conffile residues, and uses native
+INI configuration to set Hidden and NoDisplay on the package-owned Xfce
+Mail Reader launcher in inherited /usr/share. It retains localized launcher
+metadata. Qubes filters NoDisplay during export; Hidden alone is insufficient.
+The existing synchronous qubes-trigger-sync-appmenus.sh runs only after each
+Mail Reader/Electrum INI change, preserving selected menu items and updating
+the exported application metadata. Stock dpkg already triggers sync for
+package installation/removal; direct INI changes need this native notification. No global APT
+autoremove is run. Read-only simulations identify dependencies made unused by
+this purge while preserving pre-existing orphans and shared dependencies; an
+explicit final purge plan is validated before applying. Existing user profiles
+are preserved. Native xdg-user-dirs system configuration disables folder creation;
+all eight skel XDG locations point to HOME. Only empty real standard folders
+in the owned TemplateVM home/skel are removed, using native rmdir. AppVM
+private homes and all nonempty directories remain intact. Initial system
+config adoption requires the package's registered conffile digest; exact
+managed content is accepted on repeat.
+
+Agent includes git-all, git-lfs, gh and the explicit Debian CLI list in
+agent.sls. Full git-all deliberately includes GUI/mail/CVS/SVN/MediaWiki
+integrations and their distribution dependencies. Trader installs the native
+Debian Electrum package. Additional profile packages were explicitly requested
+by the user; recommendations are disabled. Existing HUD/font/Mousepad states
+and Firefox page defaults are shared by Base and both descendants.
+
+Codex, Nous Research Hermes Agent, OpenClaw and signal-cli have no candidates
+in the enabled Debian repositories. An async user question requests an
+Agent-only exception to the repository's upstream/runtime dependency policy;
+no answer has been received as of this entry. The current Agent state only
+installs its signed Debian CLI foundation. No upstream agent, language-index
+package, new runtime or third-party repository has been installed. Do not
+report Agent as complete until this policy decision and the actual deployment
+are resolved. Trader now reuses the existing root-owned qt5ct configuration and palette.
+Its native desktop Entry Exec selects qt5ct and redirects XDG_CONFIG_HOME only
+for that launch; Electrum data uses HOME/.electrum or ELECTRUMDIR and remains
+in its normal private home. URI and localized launcher metadata are preserved.
+CLI invocations do not inherit the launcher environment, and user-selected
+Electrum dark styling can override the palette. No new wrapper is installed.
+Restore the package launcher before a guest-HUD rollback removes that palette.
+Live native Qt verification passes: active Text/WindowText #19d3ff,
+Base/Window #02070c, Zen Dots interface and White Rabbit for Electrum's
+explicit QFont(monospace) address, amount, transaction and console fields.
+QFontDatabase's generic FixedFont default is a different API and is not used
+by those controls. Fontconfig reports White Rabbit with its additional New
+alias; both map to the installed bundled font. No wallet directory was created.
+
+Isolated native validation passes 43 identity/render cases, 55 Base
+render/guard cases, 42 Trader render/guard cases, native XDG no-folder behavior,
+empty-only rmdir behavior, INI dry-run/apply/idempotency preserving localized
+launcher keys, and mocked installed qubesctl clone-before-discovery ordering.
+The final full include/requisite graphs pass at 54/55/61 states in the empty
+home fixtures, including purge-before-install and menu-sync ordering. Native
+APT research confirms exactly 81 planned removals: 28 suite packages and 53
+newly unused dependencies, with no install/configure operation. The first
+live dom0 creation passed nine states. Initial full guest dry runs passed
+61/62/62 states and all returned halted. The final refined profile dry run and actual apply both passed dom0 3,
+Base 62, Agent 63 and Trader 69 states with empty stderr. All three package
+purges removed the exact 81 planned packages, with no remaining installed or
+residual-config LibreOffice/Thunderbird/UNO/OpenSymbol package. pass and the
+Agent CLI executables run successfully. Trader has Electrum 4.5.8+ds-6,
+python3-pyqt5 5.15.11+dfsg-2 and qt5ct 1.8-2+b1 from Debian.
+
+Native post-apply checks confirm all eight old empty standard folders are
+absent from template homes/skel, and isolated new homes remain empty apart
+from .config while every XDG role resolves to HOME. Each TemplateVM has
+NetVM=None, no default route, active native UpdatesProxy forwarding and the
+APT localhost:8082 proxy. Independent dom0 menu checks confirm that all three
+exclude LibreOffice/Thunderbird/Mail Reader and that Trader exports and selects
+Electrum through qubes.StartApp. Selected/default menu lists remain intact.
+After verification all three are halted, and every original VM retains its
+previous class, template and running/paused/halted state. No existing GUI
+application was restarted or closed.
+
+The deployment audit finds no new runtime helper, repository, language-index
+input, source build, direct network fetch or dom0 dependency. Native dom0
+package functions still resolve to qubes_dom0_update. Reapply the family after
+package updates that replace its edited desktop launchers. Agent remains
+partial only because the four upstream tools require the unanswered policy
+decision described above. Evidence directories are recorded in the current
+session; live deployment records are /tmp/hud-template-family-live-t659nyrc/.
+The final independent source audit is /tmp/hud-family-final-audit-hmcr26hg/
+and complete final graph evidence is /tmp/hud-family-integration-actdd3fj/.
