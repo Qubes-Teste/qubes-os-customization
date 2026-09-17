@@ -43,6 +43,7 @@
 {% set dconf_source_root = '/etc/dconf/db/local.d' %}
 {% set dconf_locks_root = dconf_source_root ~ '/locks' %}
 {% set dconf_profile = '/etc/dconf/profile/user' %}
+{% set gtksource_versions = ['3.0', '4'] %}
 {% set qubesdb_read = '/usr/bin/qubesdb-read' %}
 {% set vm_type = salt['cmd.run'](
     qubesdb_read ~ ' /qubes-vm-type', python_shell=false,
@@ -185,6 +186,29 @@
 
 {# Refuse to adopt a pre-existing namespace or file we do not own. #}
 {% set collision = namespace(found=false) %}
+{# Use existing stock style directories; never create or replace a toolkit. #}
+{% for version in gtksource_versions %}
+  {% set source_root = '/usr/share/gtksourceview-' ~ version %}
+  {% for directory in [source_root, source_root ~ '/styles'] %}
+    {% set metadata = salt['file.lstat'](directory) %}
+    {# 16877 is S_IFDIR | 0755; 33188 below is S_IFREG | 0644. #}
+    {% if metadata and (metadata.get('st_mode') != 16877
+        or metadata.get('st_uid') != 0 or metadata.get('st_gid') != 0) %}
+      {% set collision.found = true %}
+    {% endif %}
+  {% endfor %}
+  {% set style = source_root ~ '/styles/qubes-hud.xml' %}
+  {% set metadata = salt['file.lstat'](style) %}
+  {% if metadata %}
+    {% if metadata.get('st_mode') != 33188
+        or metadata.get('st_uid') != 0 or metadata.get('st_gid') != 0
+        or metadata.get('st_nlink') != 1 %}
+      {% set collision.found = true %}
+    {% elif owner_marker not in salt['file.read'](style) %}
+      {% set collision.found = true %}
+    {% endif %}
+  {% endif %}
+{% endfor %}
 {% for directory, marker_file in [
     (theme_root, theme_owner),
     (config_root, config_owner)
@@ -781,6 +805,28 @@ qubes_gui_guest_hud_dconf_defaults:
     - require:
       - pkg: qubes_gui_guest_hud_runtime_packages
       - file: qubes_gui_guest_hud_cyan_icon_record
+{% for version in gtksource_versions
+    if salt['file.directory_exists']('/usr/share/gtksourceview-' ~ version ~ '/styles') %}
+      - file: qubes_gui_guest_hud_gtksourceview_{{ version|replace('.', '_') }}
+{% endfor %}
+
+{% for version in gtksource_versions
+    if salt['file.directory_exists']('/usr/share/gtksourceview-' ~ version ~ '/styles') %}
+qubes_gui_guest_hud_gtksourceview_{{ version|replace('.', '_') }}:
+  file.managed:
+    - name: /usr/share/gtksourceview-{{ version }}/styles/qubes-hud.xml
+    - source: salt://qubes_gui/guest_hud/files/gtksourceview.xml
+    - check_cmd: >-
+        /usr/bin/python3 -c 'import sys, xml.etree.ElementTree as ET;
+        root = ET.parse(sys.argv[1]).getroot();
+        assert root.tag == "style-scheme" and root.get("id") == "qubes-hud"
+        and root.get("version") == "1.0"'
+    - user: root
+    - group: root
+    - mode: '0644'
+    - require:
+      - pkg: qubes_gui_guest_hud_runtime_packages
+{% endfor %}
 
 qubes_gui_guest_hud_dconf_locks:
   file.managed:

@@ -2999,3 +2999,78 @@ confirming Salt preserves the repaired setting. All 74 deployment source
 files remain byte-identical to the previous commit; this repair adds no code,
 dependency or network path. The existing UpdateVM-backed package state remains
 the default.
+
+### Native Mousepad editor palette and defaults (2026-09-17)
+
+The workspace 2 text-editor preview uses the stock Mousepad in `hud-test`.
+The user requested highlight-cyan text, a black editor and line-number gutter,
+bright cyan selection with black glyphs, line numbers and status bar enabled,
+and White Rabbit for document text. Menus and the rest of the interface retain
+Zen Dots. The GTK save dialog's places sidebar now uses cyan labels and icons,
+with black text on bright cyan for its selected location.
+
+Guest Salt now supplies the native `qubes-hud` GtkSourceView XML scheme and
+editable Mousepad dconf defaults: `White Rabbit 10`, explicit document font,
+line numbers and status bar. The standalone scheme uses `#19d3ff` text on
+exact black, `#5ff4ff` selection with black glyphs in focused and unfocused
+windows, and cyan shades for syntax. The existing compositor supplies window
+transparency; no second transparency mechanism was added to the editor.
+
+The same owned XML is installed only beneath existing GtkSourceView 3.0 or 4
+style directories. No editor/toolkit package is added, no shared stock style
+is overwritten, and no custom runtime helper is deployed. Parent metadata and
+file ownership, type, mode, single-link and marker guards protect installation
+and rollback. Dconf activation follows style installation; rollback first
+removes/rebuilds the HUD defaults and then removes only the owned scheme files.
+The existing theme locks are unchanged. Saved user Mousepad preferences take
+precedence over these new editable defaults.
+
+The shared GTK 3 overlay also supplies matching ordinary text-view and gutter
+colors, and bright selection in text views and file-name fields. Its targeted
+places-sidebar rules cover normal, selected and unfocused labels without
+changing trusted Qubes title colors. Both native GtkSourceView versions in
+hud-test accept all 50 styles; private native rendering verifies body, gutter,
+selection and focus-loss colors. Forty isolated native Salt render/guard cases
+cover both supported guest families, toolkit presence/absence, collisions and
+acyclic apply/rollback requisites. Native dconf compilation passes. The
+entrypoint audit finds no added dependency, network fetch or source build;
+dom0 package functions still resolve to `qubes_dom0_update`.
+
+The running editor had an unsaved document. Its font, line-number and status-bar
+preferences were updated through GSettings without closing it. The current
+AppVM received the same owned CSS/XML/dconf assets as the portable formula;
+this root snapshot preview is separate from persistent TemplateVM deployment.
+Mousepad 0.6.3 caches its scheme list and has no exposed rescan action. The
+existing process therefore uses the matching GTK fallback until its next
+normal launch; newly launched editors can load the full native syntax scheme.
+A one-time native XSettings theme-name round trip reloaded GTK CSS, preserving
+the existing owner, original serial fields, other settings and final property
+bytes. That maintenance script stays outside the repository. No editor buffer
+was read or replaced, and Mousepad PID 8059 remains alive. All fourteen original
+application identities, frames and marks were preserved.
+
+The screen locked before visual inspection of the updated live window.
+The background theme notification did not send GUI input or alter the lock,
+focus or workspace. Color verification used private native specimens, not a
+claim of seeing through the lock. The existing workspace 2 preview layout and
+Firefox-based boot preset are unchanged.
+
+The default dom0 dry run and actual apply each passed all 83 states, changing
+only the shared GTK 3 stylesheet. Source, synced and installed asset hashes
+match. Independent read-only checks confirm the live editor's White Rabbit
+mapping, effective settings and fresh native scheme discovery, alongside the
+unchanged application layout. Evidence is under
+`/tmp/hud-mousepad-2ihm0li6/`, with native scheme/render results in
+`/tmp/hud-mousepad-scheme-test/` and Salt guard/provider audit results in
+`/tmp/hud-mousepad-salt-audit-2fbezosw/`.
+
+Full default guest dry runs and applies passed on all three templates:
+45 states on debian-13-xfce, 51 on whonix-gateway-18 and 49 on
+whonix-workstation-18. Debian changed its GTK overlay, both native scheme
+files, Mousepad defaults and compiled dconf database. Each Whonix template
+changed only its GTK overlay, defaults and dconf database; neither had the
+optional GtkSourceView directories, and no toolkit/editor was installed.
+Apply stderr is empty. All three templates returned to their original halted
+state, and the running service qubes and hud-test were not restarted.
+The normalized template results are `templates-dry-run-summary.json` and
+`templates-apply-summary.json` in the live evidence directory above.

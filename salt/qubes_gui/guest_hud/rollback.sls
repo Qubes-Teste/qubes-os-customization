@@ -35,6 +35,7 @@
 {% set dconf_database = '/etc/dconf/db/local' %}
 {% set dconf_source_root = '/etc/dconf/db/local.d' %}
 {% set dconf_locks_root = dconf_source_root ~ '/locks' %}
+{% set gtksource_versions = ['3.0', '4'] %}
 {% set qubesdb_read = '/usr/bin/qubesdb-read' %}
 {% set vm_type = salt['cmd.run'](
     qubesdb_read ~ ' /qubes-vm-type', python_shell=false,
@@ -228,6 +229,28 @@
     (guest_hud_platform.get('late_session', ''), [owner_marker])
 ] %}
 {% set collision = namespace(found=false) %}
+{% for version in gtksource_versions %}
+  {% set source_root = '/usr/share/gtksourceview-' ~ version %}
+  {% for directory in [source_root, source_root ~ '/styles'] %}
+    {% set metadata = salt['file.lstat'](directory) %}
+    {# 16877 is S_IFDIR | 0755; 33188 below is S_IFREG | 0644. #}
+    {% if metadata and (metadata.get('st_mode') != 16877
+        or metadata.get('st_uid') != 0 or metadata.get('st_gid') != 0) %}
+      {% set collision.found = true %}
+    {% endif %}
+  {% endfor %}
+  {% set style = source_root ~ '/styles/qubes-hud.xml' %}
+  {% set metadata = salt['file.lstat'](style) %}
+  {% if metadata %}
+    {% if metadata.get('st_mode') != 33188
+        or metadata.get('st_uid') != 0 or metadata.get('st_gid') != 0
+        or metadata.get('st_nlink') != 1 %}
+      {% set collision.found = true %}
+    {% elif owner_marker not in salt['file.read'](style) %}
+      {% set collision.found = true %}
+    {% endif %}
+  {% endif %}
+{% endfor %}
 {% for path, markers in text_targets if path %}
   {% set target_lstat = salt['file.lstat'](path) %}
   {% if target_lstat|length > 0 %}
@@ -507,6 +530,14 @@ qubes_gui_guest_hud_rollback_dconf_database:
       - file: qubes_gui_guest_hud_rollback_remove_dconf_defaults
       - file: qubes_gui_guest_hud_rollback_remove_dconf_locks
 
+{% for version in gtksource_versions %}
+qubes_gui_guest_hud_rollback_remove_gtksourceview_{{ version|replace('.', '_') }}:
+  file.absent:
+    - name: /usr/share/gtksourceview-{{ version }}/styles/qubes-hud.xml
+    - require:
+      - cmd: qubes_gui_guest_hud_rollback_dconf_database
+{% endfor %}
+
 qubes_gui_guest_hud_rollback_empty_theme_directories:
   cmd.run:
     - name: >-
@@ -616,6 +647,9 @@ qubes_gui_guest_hud_rollback_complete:
       - file: qubes_gui_guest_hud_rollback_remove_tor_launcher_manager
 {% endif %}
       - cmd: qubes_gui_guest_hud_rollback_dconf_database
+{% for version in gtksource_versions %}
+      - file: qubes_gui_guest_hud_rollback_remove_gtksourceview_{{ version|replace('.', '_') }}
+{% endfor %}
       - cmd: qubes_gui_guest_hud_rollback_empty_theme_directories
       - cmd: qubes_gui_guest_hud_rollback_empty_config_directories
 {% if sdwdate_dropin_root_owned %}

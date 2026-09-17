@@ -10,6 +10,7 @@
 @define-color hud_sheen rgba(217, 250, 255, 0.16);
 @define-color hud_cyan_wash rgba(25, 211, 255, 0.14);
 @define-color hud_cyan #19d3ff;
+@define-color hud_selection #5ff4ff;
 @define-color hud_cyan_dim #116b86;
 @define-color hud_text #19d3ff;
 @define-color hud_text_dim #7bb9c7;
@@ -247,6 +248,58 @@ treeview.view:selected,
 selection {
   background-color: @hud_cyan_dim;
   color: #ffffff;
+}
+
+/* Text selection stays legible in editors and file-name fields, including
+ * unfocused windows. GtkSourceView uses the matching Qubes HUD scheme. */
+textview.view,
+textview.view text {
+  background-color: @hud_root;
+  color: @hud_text;
+  caret-color: @hud_cyan;
+}
+
+textview.view border {
+  background-color: @hud_root;
+  color: @hud_text_dim;
+}
+
+textview.view text selection,
+textview.view text selection:focus,
+textview.view text selection:backdrop,
+entry selection,
+entry selection:focus,
+entry selection:backdrop {
+  background-color: @hud_selection;
+  color: @hud_root;
+}
+
+/* Adwaita gives file-chooser places their own foreground and background. */
+placessidebar,
+placessidebar .view,
+placessidebar row {
+  background-color: @hud_root;
+  color: @hud_text;
+}
+
+placessidebar label,
+placessidebar image {
+  color: @hud_text;
+}
+
+placessidebar row:hover {
+  background-color: @hud_surface;
+}
+
+placessidebar row:selected,
+placessidebar row:selected:backdrop {
+  background-color: @hud_selection;
+  color: @hud_root;
+}
+
+placessidebar row:selected label,
+placessidebar row:selected image {
+  color: @hud_root;
 }
 
 scrollbar {

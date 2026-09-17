@@ -15,6 +15,8 @@ The state supplies:
   and other monospace text, with Noto fallback for missing characters;
 - a matching Xfce Terminal palette when a user has no explicit terminal
   configuration;
+- a native Mousepad cyan-on-black editor scheme, White Rabbit 10-point text,
+  line numbers and status bar as editable defaults;
 - a root-owned Qt 5 palette scoped to Whonix's Sdwdate service, its child Tor
   Control Panel, and the package's standalone Tor Control Panel launcher;
 - thin Whonix Sdwdate/Tor tray status art on exact-black canvases, with cyan
@@ -119,6 +121,18 @@ The Xfce and dconf theme choices are locked at system level so an existing
 AppVM's saved toolkit theme cannot hide the HUD. The lock disappears on
 rollback and the earlier user choice becomes effective again. A pre-existing
 per-user Xfce Terminal palette is deliberately preserved.
+
+Mousepad uses the native `qubes-hud` GtkSourceView style scheme. It is installed
+only into already-existing `/usr/share/gtksourceview-3.0/styles` and
+`/usr/share/gtksourceview-4/styles` directories; Mousepad and GtkSourceView are
+not added as dependencies. The scheme uses cyan text on black and a bright
+cyan selection with black selected text. Its font, scheme, line-number and
+status-bar settings are editable dconf defaults, without locks. Existing
+saved Mousepad choices take precedence and remain intact across applies.
+Choose the Qubes HUD scheme and White Rabbit font in Mousepad's preferences
+to update an existing override. Rollback removes only the owned scheme files
+and system defaults, leaving stock schemes, shared directories and user
+preferences intact.
 
 Template root changes become visible only after the TemplateVM has shut down
 and dependent AppVMs or DispVMs restart. The state never restarts those
