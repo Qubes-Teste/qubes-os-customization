@@ -26,11 +26,15 @@ The complete dependency and offline policy is in `AGENTS.md`. In particular:
 
 - never require direct dom0 networking for normal deployment;
 - use the UpdateVM-backed Salt package path by default;
-- use only packages in stock, signed Qubes/Fedora/Debian repositories;
-- do not add pip, npm, Cargo, Conda, third-party repository, or similar
-  deployment dependencies;
-- use the Python already shipped by Qubes and its standard library only;
-- do not perform a source build or network fetch during target deployment;
+- in dom0, use only committed inputs or stock, signed repositories; do not
+  add language-index dependencies, third-party repositories or new runtimes;
+- dom0 Python helpers use the shipped interpreter and standard library only;
+- dom0 deployment performs no source build or network fetch;
+- inside guest qubes, upstream sources, language indexes, runtimes/modules and
+  builds are allowed for requested software, with recorded versions/provenance
+  and reproducible Salt deployment; the strict dependency ceiling is dom0-only;
+- TemplateVM distribution packages still use native UpdatesProxy; other guest
+  downloads/builds execute inside qubes with documented networking/proxy setup;
 - keep all persistent behavior in committed Salt states and assets, not in
   one-off live edits.
 
@@ -277,10 +281,13 @@ dependent AppVMs/DispVMs restart. This includes `sys-whonix`, Sdwdate, and Tor
 Control Panel. Plan those restarts rather than interrupting live network or
 anonymity qubes during a Salt apply.
 
-## Current dependency ceiling
+## Dom0 dependency ceiling and guest package inventory
 
-Do not add to these lists without the explicit approval and documentation
-required by `AGENTS.md`.
+The dom0 lists remain subject to the explicit approval and documentation
+required by `AGENTS.md`. Guest package lists describe the current theme
+implementation; guest-only additions follow the separate guest policy and do
+not require a dom0 dependency exception. The family profiles add their own
+declared packages, documented in the September 17 entry below.
 
 Dom0 i3 state:
 
@@ -3127,13 +3134,15 @@ by the user; recommendations are disabled. Existing HUD/font/Mousepad states
 and Firefox page defaults are shared by Base and both descendants.
 
 Codex, Nous Research Hermes Agent, OpenClaw and signal-cli have no candidates
-in the enabled Debian repositories. An async user question requests an
-Agent-only exception to the repository's upstream/runtime dependency policy;
-no answer has been received as of this entry. The current Agent state only
-installs its signed Debian CLI foundation. No upstream agent, language-index
-package, new runtime or third-party repository has been installed. Do not
-report Agent as complete until this policy decision and the actual deployment
-are resolved. Trader now reuses the existing root-owned qt5ct configuration and palette.
+in the enabled Debian repositories. At the time of this deployment an async
+question about the dependency policy was unanswered. On 2026-09-18 the user
+clarified that the strict restrictions were intended only for dom0; the guest
+policy now permits these tools and dependencies without another exception.
+The current Agent state still installs only its signed Debian CLI foundation;
+upstream installation and validation remain to be implemented. Do not report
+Agent as complete merely because the policy blocker has been removed.
+
+Trader now reuses the existing root-owned qt5ct configuration and palette.
 Its native desktop Entry Exec selects qt5ct and redirects XDG_CONFIG_HOME only
 for that launch; Electrum data uses HOME/.electrum or ELECTRUMDIR and remains
 in its normal private home. URI and localized launcher metadata are preserved.
@@ -3178,8 +3187,35 @@ The deployment audit finds no new runtime helper, repository, language-index
 input, source build, direct network fetch or dom0 dependency. Native dom0
 package functions still resolve to qubes_dom0_update. Reapply the family after
 package updates that replace its edited desktop launchers. Agent remains
-partial only because the four upstream tools require the unanswered policy
-decision described above. Evidence directories are recorded in the current
+partial: the four upstream tools were initially held for the policy decision
+and still need implementation/deployment. The 2026-09-18 clarification below
+removes that policy blocker. Evidence directories are recorded in the current
 session; live deployment records are /tmp/hud-template-family-live-t659nyrc/.
 The final independent source audit is /tmp/hud-family-final-audit-hmcr26hg/
 and complete final graph evidence is /tmp/hud-family-integration-actdd3fj/.
+
+
+### Dependency restrictions scoped to dom0 (2026-09-18)
+
+The user clarified that the strict source, runtime, Python-module, package
+ceiling and additional-package approval restrictions were intended only for
+dom0. AGENTS.md now states that boundary explicitly. Guest-only software in
+TemplateVMs/AppVMs/StandaloneVMs/DispVMs may use upstream repositories and
+downloads, language indexes such as pip/npm, required runtimes/frameworks,
+modules, source builds and validation tools for the requested work. Shared
+helpers that also execute in dom0 remain subject to the dom0 restrictions.
+No further Agent-only policy exception is needed for the four requested tools.
+
+Dom0's offline default, native UpdateVM package provider, strict dependency
+ceiling and standard-library-only custom Python policy remain intact. Native
+TemplateVM distribution packages still use UpdatesProxy. Other guest fetches
+and builds execute inside qubes with a documented portable network/proxy path;
+versions/provenance, suitable integrity checks and update handling belong in
+the implementation. Persistent behavior remains committed Salt/configuration,
+and minimizing custom helpers continues to apply everywhere.
+
+This policy/documentation change does not itself install the pending tools or
+alter VM networking. Current status descriptions now distinguish permission
+to implement them from completed installation. Deployment instructions and
+code are otherwise unchanged; no Salt apply or VM startup is required for
+this documentation change.

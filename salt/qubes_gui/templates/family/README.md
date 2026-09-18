@@ -23,10 +23,10 @@ defaults and ordinary Firefox page colors when Firefox is already installed.
 
 Codex, Nous Research's Hermes Agent, OpenClaw and signal-cli are requested but
 not yet installed by this formula. None has a candidate in the enabled Debian
-repositories. Their upstream distribution paths require a separate decision
-under this repository's dependency policy; in particular, Hermes's Python
-dependencies and OpenClaw's Node runtime cannot be introduced silently.
-The Agent profile currently supplies its Debian CLI foundation only.
+repositories. The guest-qube dependency policy permits their upstream sources
+and required runtimes/dependencies; no additional policy exception is needed.
+Their reproducible installation and validation are still outstanding. The
+Agent profile currently supplies its Debian CLI foundation only.
 
 `git-all` deliberately includes Debian's Git GUI, documentation, mail, SVN,
 CVS and MediaWiki integrations. APT recommendations are disabled for these

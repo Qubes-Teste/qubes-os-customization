@@ -32,11 +32,13 @@ tree. It records hashes for copied files so later Git revisions remove only
 stale files that are still byte-for-byte identical to the version it placed;
 a locally modified stale file is preserved and makes the sync stop.
 
-Deployment uses only files in this repository and software supplied by the
-configured Qubes repositories. Dom0 remains offline: missing signed RPMs are
-obtained through its UpdateVM. The Python management helpers use only the
-Python standard library already present in Qubes dom0. Deployment does not
-install pip modules, compile software, or distribute a customized i3 binary.
+Dom0 deployment uses only files in this repository and software supplied by
+the configured Qubes repositories. Dom0 remains offline: missing signed RPMs
+are obtained through its UpdateVM. Dom0 Python helpers use its existing
+interpreter and standard library; dom0 deployment does not install pip modules,
+compile software or distribute a customized i3 binary. Inside guest qubes,
+requested software may use upstream sources, language indexes and additional
+runtimes under the separate guest policy in `AGENTS.md`.
 
 Render and dry-run it before applying:
 
@@ -383,8 +385,8 @@ TemplateVMs and applies the common HUD, fonts and Firefox page defaults:
 | `debian-13-hud-trader` | Base + Trader | Debian Electrum |
 
 The Agent's upstream Codex, Hermes Agent, OpenClaw and signal-cli installation
-is pending a decision on the repository's dependency policy; the current Agent
-state supplies only its Debian CLI layer. See the
+is permitted by the guest-qube dependency policy but remains to be implemented;
+the current Agent state supplies only its Debian CLI layer. See the
 [family instructions](salt/qubes_gui/templates/family/README.md).
 
 Agent and Trader independently include Base. Add shared packages to

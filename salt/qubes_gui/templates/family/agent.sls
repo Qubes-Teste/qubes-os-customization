@@ -1,5 +1,5 @@
 {# Development tools from Debian's signed repositories.
-   Upstream Codex/Hermes/OpenClaw/signal-cli await the dependency-policy decision. #}
+   Upstream Codex/Hermes/OpenClaw/signal-cli are permitted but not yet implemented. #}
 {% from 'qubes_gui/templates/family/scope.jinja' import scope with context %}
 {% if not scope.valid or scope.role != 'agent' %}
 qubes_gui_template_agent_scope_refused:
