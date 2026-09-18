@@ -1,0 +1,26 @@
+{# Every network/build state is restricted to the identity-bound Agent guest. #}
+{% from 'qubes_gui/templates/family/scope.jinja' import scope with context %}
+{% import_json 'qubes_gui/templates/family/agent-upstream/versions.json' as versions %}
+{% set root = '/opt/qubes-hud-agent' %}
+{% set cache = '/var/cache/qubes-hud-agent' %}
+{% set owner = 'Qubes HUD Agent upstream software v1' %}
+{% set safe = namespace(value=scope.valid and scope.role == 'agent') %}
+{% if safe.value %}
+{% for path in ['/opt', '/var', '/var/cache', root, cache] %}
+  {% set st = salt['file.lstat'](path) %}
+  {% if (not st and path not in [root, cache]) or (st and (
+      st.get('st_uid') != 0 or st.get('st_gid') != 0 or st.get('st_mode') != 16877)) %}
+    {% set safe.value = false %}
+  {% elif st and path in [root, cache] %}
+    {% set mark = salt['file.lstat'](path ~ '/.salt-owner') %}
+    {% if not mark or mark.get('st_uid') != 0 or mark.get('st_gid') != 0
+        or mark.get('st_mode') != 33188 or mark.get('st_nlink') != 1 %}
+      {% set safe.value = false %}
+    {% elif salt['file.read'](path ~ '/.salt-owner')|trim != owner %}
+      {% set safe.value = false %}
+    {% endif %}
+  {% endif %}
+{% endfor %}
+{% endif %}
+{% set upstream = {'root': root, 'cache': cache, 'owner': owner,
+  'versions': versions, 'valid': safe.value, 'proxy': 'http://127.0.0.1:8082'} %}

@@ -2,8 +2,10 @@
 
 This opt-in formula creates Debian 13 x86_64 TemplateVMs on Qubes 4.3. It uses
 native Qubes cloning, Salt includes and signed Debian packages through the
-normal TemplateVM UpdatesProxy. It adds no dom0 package, repository, source
-build or runtime helper. The installed `debian-13-xfce` source remains intact.
+normal TemplateVM UpdatesProxy. Agent additionally installs pinned upstream
+software inside the guest through that proxy. It adds no dom0 package,
+repository, source build or runtime helper. The installed `debian-13-xfce`
+source remains intact.
 
 ## Profiles and inheritance
 
@@ -17,16 +19,20 @@ defaults and ordinary Firefox page colors when Firefox is already installed.
   Mail Reader launcher without removing Xfce.
 - **Agent:** Base plus `git-all`, `git-lfs`, `gh`, search/JSON/file/archive
   tools, SSH/rsync, process diagnostics, tmux, SQLite, build-essential,
-  pkg-config and shellcheck. The exact package list is in `agent.sls`.
+  pkg-config and shellcheck, plus Codex, Hermes Agent, OpenClaw with its disabled
+  Signal plugin, and native signal-cli. Debian packages are listed in
+  `agent.sls`; upstream versions and updates are described below.
 - **Trader:** Base plus Debian's Electrum, using the existing native Qt HUD
   palette through its standard desktop launcher.
 
-Codex, Nous Research's Hermes Agent, OpenClaw and signal-cli are requested but
-not yet installed by this formula. None has a candidate in the enabled Debian
-repositories. The guest-qube dependency policy permits their upstream sources
-and required runtimes/dependencies; no additional policy exception is needed.
-Their reproducible installation and validation are still outstanding. The
-Agent profile currently supplies its Debian CLI foundation only.
+The guest-only upstream state installs Codex 0.155.0, Nous Research's Hermes
+Agent 0.21.3, OpenClaw and its Signal plugin 2026.9.4, and signal-cli 0.14.8.
+Node 24.21.0 and a pinned Python environment support them under
+`/opt/qubes-hud-agent`; private AppVM homes retain accounts and configuration.
+Normal CLI and Signal dependencies are included. Optional Hermes browser
+downloads and its separate TUI are not bundled or started. See the
+[upstream guide](agent-upstream/README.md) for the exact pins, lockfile
+maintenance, first-use configuration and update procedure.
 
 `git-all` deliberately includes Debian's Git GUI, documentation, mail, SVN,
 CVS and MediaWiki integrations. APT recommendations are disabled for these
@@ -107,6 +113,12 @@ does not shut them down. Qubes management normally returns initially halted
 guests to halted; verify their state after an interrupted or failed operation.
 Running AppVMs are never restarted by this formula. Restart them normally to
 receive updated template roots.
+
+For an upstream-tool-only update, the same command can target just
+`debian-13-hud-agent`; shared Base changes require all three targets. APT does
+not update the pinned `/opt` applications. Review their upstream releases,
+update `agent-upstream/versions.json` and the npm lock when needed, then apply
+Salt. No scheduled upstream updater or permanent package hold is installed.
 
 ## Identity and recovery
 

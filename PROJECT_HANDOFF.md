@@ -3138,9 +3138,9 @@ in the enabled Debian repositories. At the time of this deployment an async
 question about the dependency policy was unanswered. On 2026-09-18 the user
 clarified that the strict restrictions were intended only for dom0; the guest
 policy now permits these tools and dependencies without another exception.
-The current Agent state still installs only its signed Debian CLI foundation;
-upstream installation and validation remain to be implemented. Do not report
-Agent as complete merely because the policy blocker has been removed.
+The Agent state at that stage installed only its signed Debian CLI foundation;
+upstream installation and validation remained outstanding at that point. The
+Agent implementation and validation are recorded in the later upstream section.
 
 Trader now reuses the existing root-owned qt5ct configuration and palette.
 Its native desktop Entry Exec selects qt5ct and redirects XDG_CONFIG_HOME only
@@ -3186,10 +3186,9 @@ application was restarted or closed.
 The deployment audit finds no new runtime helper, repository, language-index
 input, source build, direct network fetch or dom0 dependency. Native dom0
 package functions still resolve to qubes_dom0_update. Reapply the family after
-package updates that replace its edited desktop launchers. Agent remains
-partial: the four upstream tools were initially held for the policy decision
-and still need implementation/deployment. The 2026-09-18 clarification below
-removes that policy blocker. Evidence directories are recorded in the current
+package updates that replace its edited desktop launchers. Agent was partial at this stage: the four upstream tools were held for the
+policy decision. The 2026-09-18 sections below record the clarification and
+subsequent upstream implementation. Evidence directories are recorded in the current
 session; live deployment records are /tmp/hud-template-family-live-t659nyrc/.
 The final independent source audit is /tmp/hud-family-final-audit-hmcr26hg/
 and complete final graph evidence is /tmp/hud-family-integration-actdd3fj/.
@@ -3219,3 +3218,114 @@ alter VM networking. Current status descriptions now distinguish permission
 to implement them from completed installation. Deployment instructions and
 code are otherwise unchanged; no Salt apply or VM startup is required for
 this documentation change.
+
+
+### Agent upstream software and update ownership (2026-09-18)
+
+The user authorized completing Codex, Nous Research Hermes Agent, OpenClaw
+and signal-cli inside the Debian Agent template, and asked that updates remain
+practical. The guest-only `family.agent-upstream` component is included by
+Agent; Base and Trader retain their native package policies. Debian packages
+continue receiving native Qubes/UpdatesProxy updates, with no package holds.
+Upstream `/opt` programs require a reviewed manifest/lock update and Salt
+reapply; APT alone does not update them. The component README records that
+workflow and the separate private-account migration responsibilities.
+
+The manifest selects Node LTS 24.21.0 (npm 11.19.0), Codex 0.155.0, OpenClaw
+and its separate official Signal plugin 2026.9.4, Hermes 0.21.3 at release
+v2026.9.14/commit 345cd2b057a452236de401d3534b8502a7465e8d, and native
+signal-cli 0.14.8. Official Node checksums were signature-verified in an
+isolated guest GPG home against fingerprint
+5BE8A3F6C8A5C01D106C0AD820B1A390B168D356. Salt verifies the pinned archive
+hashes. The committed npm v3 lock records every transitive registry tarball
+and SHA512 integrity; two bundled entries are covered by their parent archive.
+The generated private npm manifest explicitly allows the five reviewed
+installation-script packages. No global npm prefix or distribution Node is
+replaced. Hermes uses its exact upstream uv.lock with frozen resolution and
+system Python 3.13; uv, setuptools and wheel are individually hash-pinned.
+Its editable source installation follows the upstream two-phase method.
+
+All downloads/builds execute in the identity-bound Agent guest via the stock
+localhost:8082 UpdatesProxy CONNECT service. The template retains NetVM=None
+and no default route. Dom0 gains no dependency or direct network request.
+The additional native dependency is python3-venv and its Debian dependencies;
+other explicit prerequisites were already present. No Java is needed: the
+published native signal-cli runs against Debian 13's existing glibc/zlib.
+
+Shared root-owned programs live under /opt/qubes-hud-agent, avoiding private
+/usr/local and user-home copies that would mask template updates. New Node/npm,
+Hermes and Signal releases stage in versioned directories, then stable links
+activate after successful checks. Hermes recipe identity includes dependency
+and tool hashes; npm identity includes runtime, lock and script policy. The
+shared ownership marker and component metadata/content guards refuse foreign
+paths and modified Hermes source. Previous directories are retained for
+reviewed rollback; private user-data migrations are not reversed by rolling
+back program files. No updater, gateway or account is started in the template.
+
+Native profile.d and Xsession hooks expose the shared commands to new login
+shells and GUI sessions. Headless non-login RPC must use an absolute path or
+a login shell. A five-line /usr/bin/hermes launcher exposes its own uv and
+places optional lazy-installed Python integrations in the user's private
+Hermes directory; core dependencies remain shared. The ordinary Hermes CLI
+and Signal support are installed; optional browser automation and Node TUI/
+dashboard builds are not included. Fresh-home OpenClaw configuration only
+selects the installed Signal plugin path and leaves it disabled. Existing
+AppVM configs/credentials remain untouched; onboarding and Signal linking
+belong in each user's AppVM. Upstream releases should be reviewed at least
+monthly and security fixes applied promptly; signal-cli warns that releases
+older than three months may become incompatible with its server protocol.
+
+Initial isolated guest proofs passed the native signal-cli version/help and
+glibc compatibility, Hermes's frozen 105-package environment and Signal/
+terminal imports, Codex version/help, OpenClaw configuration validation and
+disabled Signal discovery. Native koffi FFI, tree-sitter-bash, protobufjs and
+Google GenAI dependency checks passed. These initial proofs used separate
+preparation directories and no account data. Live deployment and final
+validation results follow below.
+
+The first full Agent dry run exposed Salt-SSH's per-argument size limit when
+`hashutil.digest` received the 172 KiB npm lock as a remote function argument.
+The formula now uses Salt's local Jinja sha256 filter for recipe identity.
+That failed render applied no states; this is a transport correction, not a
+lockfile truncation or relaxation of integrity checks.
+
+Native affected-state dry run passed all 33 states. Fresh test mode uses a
+planned-extraction placeholder only when the not-yet-downloaded local archive
+is absent; cached dry runs and every actual apply keep archive.extracted and
+the exact source hash. The Hermes completion guard excludes cwd from its
+precondition evaluation so a missing future source directory cannot falsely
+look completed during a fresh dry run. Fifty scoped render/graph/metadata
+cases and six real native cmd.run guard cases cover these behaviors.
+
+The complete live Agent apply passed all 88 states with empty stderr, changing
+only the 33 upstream states. Debian installed python3-venv/python3.13-venv and
+updated the existing Python 3.13 packages from deb13u3 to deb13u5 through
+UpdatesProxy. Normal-user validation then passed Codex/OpenClaw/signal-cli
+versions and help, exact npm top-level versions, OpenClaw's unchanged private
+test configuration and disabled Signal discovery, and native profile PATH.
+Hermes passed all 105 locked package versions, uv pip check, clean Git commit
+and lockfile identity, read-only shared metadata, CLI help, launcher lazy-target
+variants, and Signal/terminal imports. Temporary homes were removed afterward.
+
+The native npm audit reported zero known advisories across the locked 381
+dependency entries on 2026-09-18; this is a dated registry check, not a promise
+about future advisories. Native Base checks confirm pass and all requested
+Debian CLI commands, no forbidden suite packages/conffiles, all eight standard
+folders absent, fresh XDG roles resolving to HOME, hidden Mail Reader, Zen Dots
+UI and White Rabbit monospace. The Agent still has no default route or package
+holds. No user account/configuration directory was initialized; Codex's
+version check left only root temporary shims/lock, whose exact names, targets
+and empty lock were verified before removing them and their empty parents.
+The 2.2 GiB preparation directory was removed after verification.
+
+The final native repeat dry run passed all 33 upstream states with zero
+changes or pending actions and empty stderr. Installed launcher/environment/
+configuration hashes match committed assets, the preparation tree is absent,
+and no root or normal-user Codex/Hermes/OpenClaw/Signal account directory
+remains. All three family templates are halted; every VM's class, template
+and running/paused/halted state exactly matches the initial snapshot. Agent
+retains NetVM=None. No existing desktop application or service qube was
+restarted. Live evidence is `/tmp/hud-agent-upstream-g7n_3kiq/`, including the
+full apply, repeat dry run, native-user checks and dated npm audit. No new
+dom0 dependency or network path was added; loaded dom0 package functions
+still resolve to qubes_dom0_update.

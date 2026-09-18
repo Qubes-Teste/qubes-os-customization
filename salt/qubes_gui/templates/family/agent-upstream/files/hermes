@@ -1,0 +1,5 @@
+#!/bin/sh
+# Qubes HUD shared Hermes launcher v1
+export PATH="/opt/qubes-hud-agent/hermes/tools:$PATH"
+export HERMES_LAZY_INSTALL_TARGET="${HERMES_LAZY_INSTALL_TARGET:-${HERMES_HOME:-$HOME/.hermes}/python-packages}"
+exec /opt/qubes-hud-agent/hermes/.venv/bin/hermes "$@"

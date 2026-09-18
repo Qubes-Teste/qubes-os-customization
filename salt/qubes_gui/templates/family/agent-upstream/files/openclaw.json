@@ -1,0 +1,14 @@
+{
+  "plugins": {
+    "load": {
+      "paths": [
+        "/opt/qubes-hud-agent/npm/node_modules/@openclaw/signal"
+      ]
+    },
+    "entries": {
+      "signal": {
+        "enabled": false
+      }
+    }
+  }
+}

@@ -381,13 +381,16 @@ TemplateVMs and applies the common HUD, fonts and Firefox page defaults:
 | Template | Salt inheritance | Applications |
 | --- | --- | --- |
 | `debian-13-hud-base` | Shared Base policy | `pass`; LibreOffice and Thunderbird purged |
-| `debian-13-hud-agent` | Base + Agent | Complete Debian Git tool set and development CLI tools |
+| `debian-13-hud-agent` | Base + Agent | Complete Debian Git tools, Codex, Hermes Agent, OpenClaw and signal-cli |
 | `debian-13-hud-trader` | Base + Trader | Debian Electrum |
 
-The Agent's upstream Codex, Hermes Agent, OpenClaw and signal-cli installation
-is permitted by the guest-qube dependency policy but remains to be implemented;
-the current Agent state supplies only its Debian CLI layer. See the
-[family instructions](salt/qubes_gui/templates/family/README.md).
+Agent installs pinned upstream tools into shared `/opt/qubes-hud-agent` inside
+the guest, using the native UpdatesProxy for downloads. No upstream software
+or runtime is installed in dom0, and no account or gateway is initialized.
+APT continues to update Debian packages; the upstream tools receive reviewed
+updates by changing their central pins/lock and reapplying Salt. See the
+[family instructions](salt/qubes_gui/templates/family/README.md) and
+[upstream update guide](salt/qubes_gui/templates/family/agent-upstream/README.md).
 
 Agent and Trader independently include Base. Add shared packages to
 [base.sls](salt/qubes_gui/templates/family/base.sls), then apply the family again

@@ -1,5 +1,4 @@
-{# Development tools from Debian's signed repositories.
-   Upstream Codex/Hermes/OpenClaw/signal-cli are permitted but not yet implemented. #}
+{# Debian CLI foundation plus reproducible guest-only upstream applications. #}
 {% from 'qubes_gui/templates/family/scope.jinja' import scope with context %}
 {% if not scope.valid or scope.role != 'agent' %}
 qubes_gui_template_agent_scope_refused:
@@ -8,6 +7,7 @@ qubes_gui_template_agent_scope_refused:
 {% else %}
 include:
   - qubes_gui.templates.family.base
+  - qubes_gui.templates.family.agent-upstream
 
 qubes_gui_template_agent_cli_packages:
   pkg.installed:
@@ -50,4 +50,10 @@ qubes_gui_template_agent_cli_packages:
     - install_recommends: false
     - require:
       - sls: qubes_gui.templates.family.base
+    - require_in:
+      - sls: qubes_gui.templates.family.agent-upstream
+      - sls: qubes_gui.templates.family.agent-upstream.node-npm
+      - sls: qubes_gui.templates.family.agent-upstream.hermes
+      - sls: qubes_gui.templates.family.agent-upstream.signal
+      - sls: qubes_gui.templates.family.agent-upstream.environment
 {% endif %}

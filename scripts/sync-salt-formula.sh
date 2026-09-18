@@ -25,6 +25,17 @@ required_entries=(
     templates/family/scope.jinja
     templates/family/base.sls
     templates/family/agent.sls
+    templates/family/agent-upstream/init.sls
+    templates/family/agent-upstream/map.jinja
+    templates/family/agent-upstream/node-npm.sls
+    templates/family/agent-upstream/hermes.sls
+    templates/family/agent-upstream/signal.sls
+    templates/family/agent-upstream/environment.sls
+    templates/family/agent-upstream/versions.json
+    templates/family/agent-upstream/files/package-lock.json
+    templates/family/agent-upstream/files/openclaw.json
+    templates/family/agent-upstream/files/agent-environment.sh
+    templates/family/agent-upstream/files/hermes
     templates/family/trader.sls
     templates/family/files/user-dirs.conf
     templates/family/files/user-dirs.dirs

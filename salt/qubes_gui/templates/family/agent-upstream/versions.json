@@ -1,0 +1,49 @@
+{
+  "node": {
+    "version": "24.21.0",
+    "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.xz",
+    "sha256": "fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6",
+    "signing_key": "5BE8A3F6C8A5C01D106C0AD820B1A390B168D356"
+  },
+  "npm": {
+    "dependencies": {
+      "@openai/codex": "0.155.0",
+      "@openclaw/signal": "2026.9.4",
+      "openclaw": "2026.9.4"
+    },
+    "allowScripts": {
+      "openclaw": true,
+      "koffi": true,
+      "tree-sitter-bash": true,
+      "protobufjs": true,
+      "@google/genai": true
+    }
+  },
+  "signal": {
+    "version": "0.14.8",
+    "url": "https://github.com/AsamK/signal-cli/releases/download/v0.14.8/signal-cli-0.14.8-Linux-native.tar.gz",
+    "sha256": "36569af20c709e0c5e6e677b74f50f147b21f3740620b8a7affde70f6027f82a",
+    "binary_sha256": "3765052151a7ea5d3cb5b237dd6fc234658e5037e9ffc716c4ac4c9acd46690b"
+  },
+  "hermes": {
+    "version": "0.21.3",
+    "tag": "v2026.9.14",
+    "commit": "345cd2b057a452236de401d3534b8502a7465e8d",
+    "lock_sha256": "4426ffd292c32cd8edda5779db49951833e87c73cab7cee845e7afe92ecb17b9"
+  },
+  "uv": {
+    "version": "0.12.16",
+    "url": "https://files.pythonhosted.org/packages/45/00/234939e0c17cc094f0d4d6e02fcaf3c8563c29de51115b05cdec8ead80f2/uv-0.12.16-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+    "sha256": "c4570eeeef838ddc6957e1b28c5e88305bb492c83b000ed3b8ff3cf86a8ecf00"
+  },
+  "wheel": {
+    "version": "0.48.0",
+    "url": "https://files.pythonhosted.org/packages/2e/29/69cfbb602cd91690c55d38ba9fe53e6a7e76a6fa647bf38f19c138d25449/wheel-0.48.0-py3-none-any.whl",
+    "sha256": "3217dcc807155e45db462d7ef2431f5ddda0d7273b700d05a67b271ceb1287ab"
+  },
+  "setuptools": {
+    "version": "83.0.0",
+    "url": "https://files.pythonhosted.org/packages/5d/40/e1e72872c6354b306daef1703549e8e83b4d43cfea356311bf722a043752/setuptools-83.0.0-py3-none-any.whl",
+    "sha256": "29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3"
+  }
+}
