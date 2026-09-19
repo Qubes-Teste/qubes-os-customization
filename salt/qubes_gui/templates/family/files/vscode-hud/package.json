@@ -1,0 +1,26 @@
+{
+  "name": "qubes-hud-theme",
+  "displayName": "Qubes HUD",
+  "description": "Qubes HUD managed theme. Owner: salt/qubes_gui/templates/family.",
+  "version": "1.0.0",
+  "publisher": "qubes-hud",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Themes"],
+  "contributes": {
+    "themes": [
+      {
+        "id": "Qubes HUD",
+        "label": "Qubes HUD",
+        "uiTheme": "hc-black",
+        "path": "./qubes-hud-color-theme.json"
+      }
+    ],
+    "configurationDefaults": {
+      "workbench.colorTheme": "Qubes HUD",
+      "editor.fontFamily": "'White Rabbit', 'Noto Sans Mono', monospace",
+      "terminal.integrated.fontFamily": "'White Rabbit', 'Noto Sans Mono', monospace"
+    }
+  }
+}

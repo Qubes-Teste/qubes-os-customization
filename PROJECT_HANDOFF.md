@@ -3329,3 +3329,83 @@ restarted. Live evidence is `/tmp/hud-agent-upstream-g7n_3kiq/`, including the
 full apply, repeat dry run, native-user checks and dated npm audit. No new
 dom0 dependency or network path was added; loaded dom0 package functions
 still resolve to qubes_dom0_update.
+
+### VS Code in the Agent template (2026-09-19)
+
+Agent now includes `family.agent-vscode`, installing Microsoft's native `code`
+Debian package through the guest's normal APT/UpdatesProxy path. Base and
+Trader do not include it. The package has no version pin or hold; ordinary
+Qubes template updates deliver subsequent Code releases. No dom0 package,
+network route, custom binary or runtime helper is added.
+
+The committed Microsoft ASCII key has fingerprint
+BC528686B50D79E339D3721CEB3E94ADBE1229CF and SHA256
+2fa9c05d591a1582a9aba276272478c262e95ad00acf60eaee1644d93941e3c6.
+It was obtained from Microsoft's official key URL inside the Agent guest,
+then used to verify the actual Code repository InRelease signature. The
+Deb822 source scopes this key with Signed-By; preferences permit only `code`
+from packages.microsoft.com. A native debconf setting prevents Microsoft's
+postinst from adding unmanaged repository/key files. Salt's debconf module
+requires the absent debconf-utils package, so one fixed native
+debconf-set-selections command with a GET-only repeat guard configures the
+already-shipped Debian service instead. No package is added just for that.
+The initial dry run found this Salt module limitation before making changes;
+the corrected ten-state fresh dry run passes with empty stderr.
+
+Scope binds installation to the owned Debian 13 x86_64 Agent TemplateVM.
+Managed paths require safe root-owned types/modes and ownership; unknown
+repository/theme files are refused. A pre-existing /usr/local/bin/code is
+refused because Microsoft's postinst would otherwise remove it. The first
+fresh test describes the package install while the repository does not yet
+exist; actual installation always uses native signature-verified APT. The
+package refresh option also permits recovery after an interrupted initial
+repository refresh.
+
+Two JSON assets under Code's built-in extension directory provide a native
+Qubes HUD theme and default White Rabbit editor/terminal fonts. Existing
+Fontconfig rules supply Zen Dots for the interface. The native dark
+high-contrast base supports black selected text on bright cyan; diagnostic
+and terminal ANSI semantic colors remain native. There is no JavaScript,
+custom CSS, Marketplace extension or source/binary patch. Root inheritance
+avoids private-home copies masking later template theme changes. Existing
+user/workspace settings override these defaults. Titlebar preference is
+preserved; native extension defaults cannot set application-scope settings.
+Guest-HUD rollback does not remove this separate Code package/theme.
+
+New Agent clones select code.desktop in both application menu lists.
+Existing verified, halted Agents append it to explicit lists while retaining
+every prior selection; missing lists keep native Qubes inheritance/fallback.
+Native package hooks export the application's desktop metadata.
+
+Live installation passes all ten focused states with empty stderr, adding
+only `code` 1.138.0-1789458761. Native dpkg verification reports no modified
+package file. APT selects the signed Microsoft release with no holds, one
+managed source and the preseeded false repository answer. Agent retains
+NetVM=None and no default route. Normal-user checks in a temporary home pass
+Code's version command and headless built-in extension discovery. Its native
+scanner marks qubes-hud.qubes-hud-theme valid/built-in with no validation
+errors and the expected theme/font contributions. Installed key/theme hashes
+match repository inputs; Fontconfig resolves the interface to Zen Dots and
+both monospace/Droid Sans Mono to White Rabbit. No visible GUI or account
+configuration was opened. This verifies native discovery/configuration, not
+a live visual inspection of a workbench window.
+
+Independent checks cover 49 scoped render/guard/API cases, six native Salt
+command-state cases with external execution mocked, and 21 native menu
+render/requisite cases. The integration graph includes Agent/upstream/Code
+with a Base stub and verifies Base-before-Code ordering. The deployment audit
+confirms all new downloads and package changes stay in the guest; loaded
+dom0 pkg.install, refresh_db and remove still use qubes_dom0_update.
+
+The repeat guest dry run passes all ten states with zero changes or pending
+actions and empty stderr. Dom0 menu dry run/apply each pass four states,
+changing only the additive Agent menu features; the generated native launcher
+uses qubes.StartApp+code. Both lists retain their original entries in order.
+The task's isolated verification/download directory was removed and Agent
+returned to its original halted state. Every VM's class, template and
+running/paused/halted state matches the initial snapshot. Live evidence is
+`/tmp/hud-agent-vscode-ncsncf9e/`; read-only source/guard audit evidence is
+`/tmp/hud-vscode-deployment-audit.json`,
+`/tmp/hud-agent-upstream-render-_tga1_ky/vscode-results.json`,
+`/tmp/hud-vscode-native-cmd-dwjh2zwy/results.json` and
+`/tmp/hud-family-identity-test-hb9uynd8/vscode-menu-results.json`.

@@ -25,6 +25,10 @@ required_entries=(
     templates/family/scope.jinja
     templates/family/base.sls
     templates/family/agent.sls
+    templates/family/agent-vscode.sls
+    templates/family/files/microsoft-vscode.asc
+    templates/family/files/vscode-hud/package.json
+    templates/family/files/vscode-hud/qubes-hud-color-theme.json
     templates/family/agent-upstream/init.sls
     templates/family/agent-upstream/map.jinja
     templates/family/agent-upstream/node-npm.sls

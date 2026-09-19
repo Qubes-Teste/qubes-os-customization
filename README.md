@@ -381,7 +381,7 @@ TemplateVMs and applies the common HUD, fonts and Firefox page defaults:
 | Template | Salt inheritance | Applications |
 | --- | --- | --- |
 | `debian-13-hud-base` | Shared Base policy | `pass`; LibreOffice and Thunderbird purged |
-| `debian-13-hud-agent` | Base + Agent | Complete Debian Git tools, Codex, Hermes Agent, OpenClaw and signal-cli |
+| `debian-13-hud-agent` | Base + Agent | Complete Debian Git tools, VS Code, Codex, Hermes Agent, OpenClaw and signal-cli |
 | `debian-13-hud-trader` | Base + Trader | Debian Electrum |
 
 Agent installs pinned upstream tools into shared `/opt/qubes-hud-agent` inside
@@ -391,6 +391,12 @@ APT continues to update Debian packages; the upstream tools receive reviewed
 updates by changing their central pins/lock and reapplying Salt. See the
 [family instructions](salt/qubes_gui/templates/family/README.md) and
 [upstream update guide](salt/qubes_gui/templates/family/agent-upstream/README.md).
+
+VS Code uses Microsoft's signed APT repository through the guest UpdatesProxy.
+Its `code` version is not pinned and receives normal APT updates; no package
+hold is added. A small data-only built-in HUD theme is inherited from the
+template, with cyan/black colors, White Rabbit editor/terminal defaults and
+the existing Zen Dots interface font. User settings take precedence.
 
 Agent and Trader independently include Base. Add shared packages to
 [base.sls](salt/qubes_gui/templates/family/base.sls), then apply the family again

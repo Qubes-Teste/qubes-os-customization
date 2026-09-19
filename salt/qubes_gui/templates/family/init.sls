@@ -15,7 +15,7 @@ qubes_gui_template_family_invalid_names:
         letter; reserved names and the -dm suffix are refused.
 
 {% elif supported_dom0 %}
-{% set status = namespace(valid=true, present={}) %}
+{% set status = namespace(valid=true, present={}, features={}) %}
 {% for role, name in family.names.items() %}
   {% set present = salt['cmd.retcode'](
       ['/usr/bin/qvm-check', '--quiet', name],
@@ -33,8 +33,9 @@ qubes_gui_template_family_invalid_names:
         ['/usr/bin/qvm-features', name],
         python_shell=false, ignore_retcode=true).splitlines() %}
       {% set fields = line.split(None, 1) %}
-      {% if fields|length == 2 %}{% do features.update({fields[0]: fields[1]|trim}) %}{% endif %}
+      {% if fields %}{% do features.update({fields[0]: fields[1]|trim if fields|length == 2 else ''}) %}{% endif %}
     {% endfor %}
+    {% do status.features.update({role: features}) %}
     {% if vm_state != 'TemplateVM|Halted' or family.tag not in tags
         or features.get(family.feature_prefix ~ 'name') != name
         or features.get(family.feature_prefix ~ 'role') != role
@@ -88,8 +89,8 @@ qubes_gui_template_family_{{ role }}_identity:
       - {{ family.feature_prefix }}name: '{{ name }}'
       - {{ family.feature_prefix }}role: '{{ role }}'
       - {{ family.feature_prefix }}source: '{{ family.parents[role] }}'
-      - default-menu-items: 'xfce4-terminal.desktop thunar.desktop firefox-esr.desktop xfce-settings-manager.desktop org.xfce.mousepad.desktop{{ " electrum.desktop" if role == "trader" else "" }}'
-      - menu-items: 'xfce4-terminal.desktop thunar.desktop firefox-esr.desktop xfce-settings-manager.desktop org.xfce.mousepad.desktop{{ " electrum.desktop" if role == "trader" else "" }}'
+      - default-menu-items: 'xfce4-terminal.desktop thunar.desktop firefox-esr.desktop xfce-settings-manager.desktop org.xfce.mousepad.desktop{{ " electrum.desktop" if role == "trader" else " code.desktop" if role == "agent" else "" }}'
+      - menu-items: 'xfce4-terminal.desktop thunar.desktop firefox-esr.desktop xfce-settings-manager.desktop org.xfce.mousepad.desktop{{ " electrum.desktop" if role == "trader" else " code.desktop" if role == "agent" else "" }}'
     - require:
       - cmd: qubes_gui_template_family_{{ role }}_clone
 
@@ -100,6 +101,30 @@ qubes_gui_template_family_{{ role }}_owned:
       - {{ family.tag }}
     - require:
       - qvm: qubes_gui_template_family_{{ role }}_identity
+{% endif %}
+{% if role == 'agent' and status.present[role] %}
+{# Preserve absent features: Qubes inheritance/fallback differs from an empty
+   explicit selection. Append only to lists already owned by this template. #}
+{% set menus = {} %}
+{% for feature in ['menu-items', 'default-menu-items'] %}
+  {% if feature in status.features[role] %}
+    {% set selected = status.features[role][feature].split() %}
+    {% if 'code.desktop' not in selected %}
+      {% do menus.update({feature: (selected + ['code.desktop'])|join(' ')}) %}
+    {% endif %}
+  {% endif %}
+{% endfor %}
+{% if menus %}
+qubes_gui_template_family_agent_code_menus:
+  qvm.features:
+    - name: '{{ name }}'
+    - set:
+{% for feature, selected in menus.items() %}
+      - {{ feature }}: {{ selected|tojson }}
+{% endfor %}
+    - require:
+      - test: qubes_gui_template_family_agent_owned
+{% endif %}
 {% endif %}
 {% endfor %}
 {% endif %}

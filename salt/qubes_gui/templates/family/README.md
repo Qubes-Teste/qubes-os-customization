@@ -2,8 +2,9 @@
 
 This opt-in formula creates Debian 13 x86_64 TemplateVMs on Qubes 4.3. It uses
 native Qubes cloning, Salt includes and signed Debian packages through the
-normal TemplateVM UpdatesProxy. Agent additionally installs pinned upstream
-software inside the guest through that proxy. It adds no dom0 package,
+normal TemplateVM UpdatesProxy. Agent also uses Microsoft's signed APT
+repository for VS Code and pinned upstream sources for its agent tools;
+downloads stay inside the guest through that proxy. It adds no dom0 package,
 repository, source build or runtime helper. The installed `debian-13-xfce`
 source remains intact.
 
@@ -19,8 +20,8 @@ defaults and ordinary Firefox page colors when Firefox is already installed.
   Mail Reader launcher without removing Xfce.
 - **Agent:** Base plus `git-all`, `git-lfs`, `gh`, search/JSON/file/archive
   tools, SSH/rsync, process diagnostics, tmux, SQLite, build-essential,
-  pkg-config and shellcheck, plus Codex, Hermes Agent, OpenClaw with its disabled
-  Signal plugin, and native signal-cli. Debian packages are listed in
+  pkg-config and shellcheck, plus VS Code, Codex, Hermes Agent, OpenClaw with its
+  disabled Signal plugin, and native signal-cli. Debian packages are listed in
   `agent.sls`; upstream versions and updates are described below.
 - **Trader:** Base plus Debian's Electrum, using the existing native Qt HUD
   palette through its standard desktop launcher.
@@ -56,6 +57,33 @@ Electrum's desktop launcher selects the shared root-owned qt5ct Fusion palette
 without redirecting its wallet/data directory. Command-line invocations do not
 inherit that launcher environment. An explicit user-selected Electrum dark
 theme can override the palette; status and QR colors remain application-owned.
+
+## Visual Studio Code
+
+Agent includes `qubes_gui.templates.family.agent-vscode`. Microsoft's native
+`code` package is installed through its signed APT repository using the guest
+UpdatesProxy. No Code version pin or package hold is added: normal Qubes/APT
+updates provide new releases. Repository preferences permit only `code` from
+Microsoft. A debconf setting prevents the package from creating a duplicate,
+unmanaged repository entry.
+
+The committed, repository-scoped signing key comes from
+[Microsoft's official key](https://packages.microsoft.com/keys/microsoft.asc):
+fingerprint `BC528686B50D79E339D3721CEB3E94ADBE1229CF`, SHA256
+`2fa9c05d591a1582a9aba276272478c262e95ad00acf60eaee1644d93941e3c6`.
+Its signature on the actual Code repository `InRelease` was verified before
+accepting the key. APT verifies repository signatures during normal updates;
+the key is not added to a global trusted-key pool.
+
+Two JSON files under the package's built-in extension directory provide the
+HUD theme and editable defaults, inherited by dependent AppVMs. This is
+data-only: no JavaScript, custom CSS, binary patch, Marketplace download or
+account setup. The native dark high-contrast theme supports black selected
+text on cyan; editor and integrated-terminal defaults use White Rabbit with
+monospace fallback, while the existing Fontconfig rules give the interface
+Zen Dots. Existing user/workspace settings override these defaults. VS Code's
+titlebar preference is preserved; the Qubes outer frame remains managed by
+dom0. Restart Code normally after adopting an updated template root.
 
 ## Home folders
 
@@ -136,7 +164,9 @@ choose fresh target names or explicitly remove only that confirmed unused
 partial clone before retrying; the formula never adopts or deletes it itself.
 
 Creation sets menus without Mail Reader/LibreOffice and includes Mousepad;
-Trader additionally lists Electrum. Later applies preserve menu choices.
+Trader additionally lists Electrum and Agent lists VS Code. Later applies
+preserve other menu choices and add Code to Agent's existing explicit lists;
+absent lists keep their normal Qubes inheritance/fallback behavior.
 Reapply the family after package upgrades: an upgrade can replace the package
 launchers whose Mail Reader visibility and Electrum environment are configured
 here. Native menu-sync hooks republish those settings when Salt changes them.
@@ -146,6 +176,7 @@ that removes new templates, reinstalls purged applications or deletes private
 data. To retire a family, first identify its dependent qubes and preserve
 their data, then change their templates or remove the unused family through
 normal Qubes administration. Removing only the visual theme uses the existing
-guest HUD rollback and does not undo the Base package/home policy. In Trader,
+guest HUD rollback and does not undo the Base package/home policy or remove
+VS Code and its separate built-in theme. In Trader,
 first restore the Electrum package launcher before removing its Qt palette;
 the family's launcher setting is reapplied by the next family apply.

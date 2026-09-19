@@ -8,6 +8,7 @@ qubes_gui_template_agent_scope_refused:
 include:
   - qubes_gui.templates.family.base
   - qubes_gui.templates.family.agent-upstream
+  - qubes_gui.templates.family.agent-vscode
 
 qubes_gui_template_agent_cli_packages:
   pkg.installed:
@@ -51,6 +52,7 @@ qubes_gui_template_agent_cli_packages:
     - require:
       - sls: qubes_gui.templates.family.base
     - require_in:
+      - sls: qubes_gui.templates.family.agent-vscode
       - sls: qubes_gui.templates.family.agent-upstream
       - sls: qubes_gui.templates.family.agent-upstream.node-npm
       - sls: qubes_gui.templates.family.agent-upstream.hermes
