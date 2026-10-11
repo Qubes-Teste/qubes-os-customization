@@ -3538,3 +3538,54 @@ class/template/state was unchanged. Evidence is
 VM startup or GUI change was performed. The unchanged Salt trees retain the
 preceding default render/provider validation; a clean second-host installation
 remains untested.
+
+### Fresh-machine Salt namespace creation (2026-10-11)
+
+The user's second-machine installation exposed a missing first-install step:
+`qubes.user-dirs` creates `/srv/user_salt` and its native top/locale inputs,
+but does not create this project's `/srv/user_salt/qubes_gui` namespace.
+The sync script incorrectly required that namespace to exist, an assumption
+hidden by the already-configured development machine and read-only installer
+plan tests. This failure occurs before template acquisition or HUD applies.
+
+The sync now rejects existing symlink/non-directory ancestors before invoking
+the native directory state, then creates the missing namespace as root:root
+0750 using the already-used native install program. Existing content handling,
+manifest checks, copy modes and stale-file cleanup are unchanged. No manual
+directory creation is required on the target. The installer and provisioning
+entrypoints inherit this correction through the shared sync script.
+
+Four new standard-library regression tests run actual Bash synchronization in
+isolated directories: absent shared parent/namespace, repeat synchronization,
+existing unrelated files, twelve unsafe ancestor/root inode cases and failure
+of the native setup step. They pass together with the 21 installer tests.
+A separate root-run proof uses the installed Qubes user-dirs Salt state with
+only its destination paths redirected into a private test tree, followed by
+the actual sync and a repeat. All formula bytes, root ownership and 0750/0640
+modes match. Evidence: `/tmp/hud-native-fresh-sync-yz41w4sg/summary.json`.
+The real `/srv` Salt installation and running desktop were not changed.
+
+The user additionally requested checking directory assumptions throughout
+deployment. The scripts require only the existing account home, stock temp
+storage and system tool/config locations; they create preparation/extraction
+parents. Fresh-path native dom0 renders hide all custom HUD/font/icon/user
+configuration and runtime paths and pass i3 9, HUD 82 and font 11 states, with
+no fatal guard or missing project-parent creator. Required unmanaged desktop
+parents belong to stock RPM packages. Native package install/refresh/remove
+still use qubes_dom0_update. Evidence:
+`/tmp/hud-fresh-dom0-audit-fp823ary/summary.json`.
+
+Guest inspection likewise found no additional directory blocker: theme/dconf,
+Agent cache/software, template skeleton and preset autostart paths have creation
+steps. Stock qubes-core-agent postinst creates the dconf user profile; Debian
+base-files postinst creates /opt and /usr/local/bin. Application roots follow
+declared package installation. A focused native Salt preview confirmed that
+the VS Code theme directory does not require its future package-created parent
+to exist during test mode. Read-only baseline checks used already-running
+guests; halted templates were not started for a full guest render.
+
+The deployment entrypoint audit found no added dependency, network request,
+source build or guest change. These checks establish fresh-directory handling
+and repeat synchronization, not a completed installation on another clean
+Qubes host. Download the updated project and prepare a new bundle to retry;
+previously prepared instruction/bundle files retain the old sync script.

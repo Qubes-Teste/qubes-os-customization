@@ -5,7 +5,8 @@ set -euo pipefail
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 source_root="$repo_root/salt/qubes_gui"
-target_root=/srv/user_salt/qubes_gui
+target_parent=/srv/user_salt
+target_root="$target_parent/qubes_gui"
 manifest_path="$target_root/.qubes-gui-sync-manifest-v1"
 
 formulas=(i3 hud guest_hud templates)
@@ -129,7 +130,20 @@ for formula in "${formulas[@]}"; do
     done < <(find "$source_root/$formula" -type f -print0 | sort -z)
 done
 
+for directory in /srv "$target_parent" "$target_root"; do
+    if "${as_root[@]}" test -L "$directory" ||
+            { "${as_root[@]}" test -e "$directory" &&
+                ! "${as_root[@]}" test -d "$directory"; }; then
+        fail "Salt target path is not a real directory: $directory"
+    fi
+done
+
 "${as_root[@]}" qubesctl state.sls qubes.user-dirs
+
+# The stock state creates user_salt, not this project's formula namespace.
+if ! "${as_root[@]}" test -e "$target_root"; then
+    "${as_root[@]}" install -d -o root -g root -m 0750 "$target_root"
+fi
 
 if "${as_root[@]}" test -L "$target_root" ||
         ! "${as_root[@]}" test -d "$target_root"; then

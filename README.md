@@ -30,6 +30,9 @@ restrict the installation itself. The installer shows its plan and asks once
 before applying the setup.
 Download the whole project, not just `install.py`; all Salt files, fonts,
 licences and pinned inputs are required.
+No project-specific directories need to exist beforehand. Native Qubes Salt
+sets up `/srv/user_salt`, and the sync step creates its `qubes_gui` namespace
+before copying the formula. Salt creates the remaining project directories.
 
 That dom0 action is required by Qubes' security model: an ordinary qube
 cannot install dom0 software by itself. The command uses the
