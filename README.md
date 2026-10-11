@@ -2,6 +2,94 @@
 
 Portable Qubes OS 4.3 desktop customization, managed with Salt from dom0.
 
+## Install the complete setup on another machine
+
+Download the [complete project ZIP](https://github.com/Qubes-Teste/qubes-os-customization/archive/refs/heads/main.zip)
+in a normal networked qube, extract it, open a terminal in the extracted
+directory, and run:
+
+```sh
+python3 install.py
+```
+
+The script prepares the project and prints **one command to enter in a dom0
+terminal**. Keep the download qube running, copy that command to dom0, and run
+it. The installer shows its plan and asks once before applying the setup.
+Download the whole project, not just `install.py`; all Salt files, fonts,
+licences and pinned inputs are required.
+
+That dom0 action is required by Qubes' security model: an ordinary qube
+cannot install dom0 software by itself. The command uses the
+[documented dom0-initiated file transfer](https://doc.qubes-os.org/en/latest/user/how-to-guides/how-to-copy-from-dom0.html#copying-to-dom0).
+It does not enable guest administration of dom0 or install an RPC policy.
+Review and trust this project's code and the download qube before running
+it in dom0. The printed SHA-256 checks transfer consistency; it is not an
+independent publisher signature.
+
+The default installation includes:
+
+- Official Qubes i3 and the complete HUD: glow, fonts, dashboard, five
+  workspace buttons, host logs, RAM indicator and scheduled night light.
+- The Debian 13 source template's guest theme, Mousepad defaults and Firefox
+  cyan/black mode. If `debian-13-xfce` is missing, native `qvm-template`
+  installs it with signature verification through the configured UpdateVM.
+- Matching guest themes in installed graphical Debian 13, Fedora and Whonix
+  18 templates, discovered by Qubes metadata rather than their names. It does
+  not create a new anonymity topology or change qubes' template assignments.
+- The Base, Agent and Trader templates, including the previously configured
+  development tools, VS Code and Electrum.
+- The `hud-test` application group on workspace 2 at boot. The dom0 dashboard
+  starts on workspace 1.
+
+Dom0 uses its native UpdateVM-backed Salt package provider. Guest distribution
+packages use UpdatesProxy; Agent's pinned upstream downloads/builds also run
+inside the guest through that proxy. No direct Internet connection is needed
+in dom0. Internet access through the configured update qube **is** needed for
+missing templates, packages and upstream software.
+
+Requirements: a graphical Qubes **4.3 x86_64** installation with initial Qubes
+setup completed, a working UpdateVM/UpdatesProxy and enough storage for the
+three additional templates and Agent software. All templates being configured
+must be halted. Existing dependent AppVMs can remain running. An existing
+`hud-test` must be halted or excluded with `--skip-workspace`. Unknown qubes
+using the managed names and conflicting user configuration are refused.
+The existing audited `i3-settings-qubes` **1.14-1.fc41** requirement remains;
+newer incompatible settings need a project update, not a forced downgrade.
+Night light requires a display driver supporting the documented CTM feature.
+
+Options can be supplied when preparing the bundle or running `install.py`
+from a copy already in dom0:
+
+```sh
+python3 install.py --plan
+python3 install.py --skip-workspace
+python3 install.py --guest-template YOUR_OTHER_GRAPHICAL_TEMPLATE
+```
+
+`--plan` in dom0 performs read-only preflight checks and lists commands without
+syncing Salt, downloading packages or starting qubes. In a download qube it
+prepares a bundle whose printed dom0 command requests that plan. Repeat
+`--guest-template` to select additional supported graphical templates not
+advertised by that metadata. `--desktop-user NAME` selects another dom0 desktop account;
+by default the invoking account is used. `--source-template NAME` selects an
+existing Debian 13 graphical source. `--yes` accepts the initial plan for
+automation; it does not bypass any refusal checks.
+
+Installation is sequential and stops on a failed phase. Some guest Salt
+renders can take several minutes without output, and Agent downloads/builds
+can take much longer. If interrupted, inspect the reported VM states, close
+only installation-owned guests left running, and rerun the same command/options.
+Completed Salt phases are repeatable; unknown partial clones require manual
+review. There is no automatic destructive rollback. The component rollback
+instructions below remain available.
+
+When installation succeeds, reboot at a convenient time and select
+**Qubes HUD (i3)** at login. Alternatively, log out normally to change the
+desktop session and restart dependent qubes when convenient. The installer
+does not interrupt the current desktop or restart service qubes. Account
+sign-ins, Signal linking, credentials and wallets belong in private AppVMs,
+not in shared templates.
+
 ## Tiling window manager
 
 The first formula installs Qubes' patched i3 session and its Qubes-specific

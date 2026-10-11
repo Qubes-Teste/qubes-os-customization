@@ -3409,3 +3409,93 @@ running/paused/halted state matches the initial snapshot. Live evidence is
 `/tmp/hud-agent-upstream-render-_tga1_ky/vscode-results.json`,
 `/tmp/hud-vscode-native-cmd-dwjh2zwy/results.json` and
 `/tmp/hud-family-identity-test-hb9uynd8/vscode-menu-results.json`.
+
+### Portable complete-stack installer (2026-10-11)
+
+The user requested downloading the GitHub project into a qube and running one
+script to reproduce the complete setup on another machine. New top-level
+`install.py` is the entry point. A normal qube cannot configure dom0 under
+stock Qubes policy, so it prepares a self-contained Python ZIP application
+and prints one command that the user must enter in a dom0 terminal. This
+required trust action follows Qubes' documented dom0-initiated qvm-run file
+transfer. It adds no privileged RPC service, admin permission or policy rule.
+Downloading only the installer source is insufficient: use the complete
+project ZIP/checkout containing the Salt assets and licences.
+
+Preparation packages only the selected deployment scripts, four formula trees,
+example pillar and project context. It excludes .git and unrelated user files,
+refuses source links/special files and incomplete inputs, and limits the
+archive to 4096 entries and 64 MiB. The dom0 command uses native qvm-run with
+separately quoted command arguments, no GUI/autostart, bounded time/bytes,
+private temporary storage and SHA-256 verification before Python execution.
+The digest proves transfer consistency, not independent publisher identity;
+the user must trust the downloaded project and source qube. ZIP applications
+execute their entry point before extracting their payload, so the archive is
+explicitly trusted installation code, not a sandbox for arbitrary archives.
+Extraction validates all member paths/types, duplicates, ancestor conflicts,
+required files and size limits before writing regular files to a new private
+directory. No package or Python module is needed for preparation or transfer.
+
+The separate `scripts/install-stack.py` supplies one-time orchestration
+with Python's standard library and existing Qubes commands. It first checks
+Qubes 4.3 x86_64, the invoking normal desktop account, configured UpdateVM,
+target classes/states and existing family/preset ownership. It discovers
+graphical Debian 13, Fedora and Whonix 18 templates through native Qubes
+features, including renamed templates; family targets use their own phase.
+All selected templates must be halted. An existing hud-test must also be
+halted, or the user can choose --skip-workspace. It never stops an occupied
+target automatically. Missing custom source templates are refused; a missing
+default debian-13-xfce is installed by native signature-verifying qvm-template
+through the explicitly selected UpdateVM. No third-party dom0 repository or
+direct dom0 networking is introduced.
+
+After showing its plan and asking once, the installer synchronizes the formula
+using the existing guarded script, acquires a missing default source, then
+runs native dry-run/apply pairs in order: official i3; HUD; discovered guest
+themes; family creation; Base/Agent/Trader guest configuration; and the
+three-phase workspace-2 preset. The Debian source also receives the existing
+Firefox cyan defaults; family Base already includes them. Other discovered
+templates receive guest_hud without assuming ordinary Firefox is installed.
+The desktop username/group and UpdateVM package transport are explicit pillar
+inputs. Salt manages all persistent behavior; this wrapper installs no new
+resident helper and changes no existing state/package policy.
+
+Guest targets are checked for existence/class/halted state before and after
+each guest command because native qubesctl otherwise silently skips unknown
+target names. Guest phases use --max-concurrency=1. i3 must be installed before
+the HUD's installed-package guards can render, clones must exist before guest
+validation, and workspace boot startup is enabled only after guest setup.
+Long package operations stay in the foreground without an arbitrary timeout
+that could kill only qubesctl's parent while leaving its workers running.
+Failure stops later phases; interruption may require reviewing native process
+and VM state before rerunning. Completed states remain repeatable. Unknown
+partial clones are never adopted or deleted. No automatic destructive rollback,
+desktop restart, service-qube restart or user-account/wallet setup is performed.
+
+--plan performs only local read-only queries in dom0 and prints commands;
+--yes accepts the initial plan without bypassing safety checks. Desktop user,
+existing Debian source and additional guest templates have explicit options.
+The README documents the complete flow, inherited compatibility requirements,
+Internet use through update qubes, restart/activation and recovery. The exact
+i3-settings-qubes 1.14-1.fc41 guard and hardware-conditional night light remain.
+
+Eighteen standard-library tests cover meaningful archive/transfer refusals,
+real Bash argument quoting and failure gating, template discovery/identity,
+read-only planning and clone/guest/preset dependency order. Native isolated
+Salt renders and compilation with default pillar pass i3 9, HUD 83, family 3
+and disabled optional preset 1 states. Native install/refresh/remove providers
+remain qubes_dom0_update. Evidence is
+`/tmp/hud-installer-isolated-render-qii136ci/summary.json`.
+
+A real temporary preparation inside the already-running hud-test, followed
+by the exact generated dom0 transfer/check/run command with --plan
+--skip-workspace, passed. Every unpacked byte matched the original deployment
+inputs; compressed ZIP bytes can differ between dom0 and guest compression
+libraries, so transfer verification uses the preparing guest's actual digest.
+All test files in that qube were removed, transferred temporary dom0 bundles
+were removed, and the complete VM class/template/state snapshot was unchanged.
+No Salt apply, new VM, package install or current desktop change was performed
+for this installer task. This is native transfer/plan/render validation, not
+an end-to-end installation on a second clean Qubes host. Live evidence is
+`/tmp/hud-installer-live-f9igtn3a/`. The final small foreground-command change
+was covered by the command-state tests after that transfer proof.
