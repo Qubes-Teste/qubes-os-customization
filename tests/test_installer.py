@@ -226,6 +226,71 @@ class BridgeChecks(unittest.TestCase):
                 self.bridge(**{option: True})
 
 
+class InstructionChecks(unittest.TestCase):
+    def instruction(self, *, transfer_failure=False, oversized=False, mktemp_failure=False):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            commands, incoming = root / 'bin', root / 'incoming'
+            commands.mkdir()
+            incoming.mkdir()
+            source = root / "start ' $(touch INJECTED); script.sh"
+            source.write_text('printf done >> "$HUD_EXECUTED"\n'
+                              '/usr/bin/head -c 32768 /dev/zero > "$HUD_LARGE"\n'
+                              + ('#' + 'x' * 20000 + '\n' if oversized else ''))
+            marker, transfer, large = root / 'executed', root / 'transfer.json', root / 'large'
+            runner = commands / 'qvm-run'
+            runner.write_text('#!/usr/bin/python3\nimport json, os, sys\nfrom pathlib import Path\n'
+                              "Path(os.environ['HUD_TRANSFER']).write_text(json.dumps(sys.argv[1:]))\n"
+                              'sys.stdout.buffer.write(Path(sys.argv[-1]).read_bytes())\n'
+                              "sys.exit(int(os.environ['HUD_FAIL']))\n")
+            runner.chmod(0o755)
+            if mktemp_failure:
+                temporary = commands / 'mktemp'
+                temporary.write_text('#!/bin/sh\nexit 1\n')
+                temporary.chmod(0o755)
+            environment = dict(os.environ, PATH=str(commands) + os.pathsep + os.environ['PATH'],
+                               TMPDIR=str(incoming), HUD_EXECUTED=str(marker), HUD_LARGE=str(large),
+                               HUD_TRANSFER=str(transfer), HUD_FAIL='4' if transfer_failure else '0')
+            command = bootstrap.instruction_command('work', source)
+            failed = transfer_failure or oversized or mktemp_failure
+            for _ in range(1 if failed else 2):
+                completed = subprocess.run(['/usr/bin/bash', '-c', command], cwd=root,
+                                           env=environment, capture_output=True, timeout=10)
+                self.assertFalse((root / 'INJECTED').exists())
+                if failed:
+                    self.assertNotEqual(completed.returncode, 0)
+                    self.assertFalse(marker.exists(), 'Incomplete instructions were executed')
+                else:
+                    self.assertEqual(completed.returncode, 0, completed.stderr)
+            if mktemp_failure:
+                self.assertFalse(transfer.exists(), 'Transfer ran after private file creation failed')
+                self.assertEqual(list(incoming.iterdir()), [])
+                return
+            self.assertEqual(json.loads(transfer.read_text()), ['-pn', 'work', 'cat', str(source)])
+            files = list(incoming.iterdir())
+            self.assertEqual(len(files), 1 if failed else 2)
+            for path in files:
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+                self.assertLessEqual(path.stat().st_size, 16384)
+                if not oversized:
+                    self.assertEqual(path.read_bytes(), source.read_bytes())
+            if not failed:
+                self.assertEqual(marker.read_text(), 'donedone')
+                self.assertEqual(large.stat().st_size, 32768,
+                                 'Transfer file-size limit leaked into installer execution')
+
+    def test_real_shell_quotes_paths_and_uses_new_private_file_on_repeats(self):
+        self.instruction()
+
+    def test_failed_and_oversized_transfers_never_execute_instructions(self):
+        for option in ('transfer_failure', 'oversized'):
+            with self.subTest(option=option):
+                self.instruction(**{option: True})
+
+    def test_mktemp_failure_prevents_transfer_and_execution(self):
+        self.instruction(mktemp_failure=True)
+
+
 def arguments(**extra):
     return SimpleNamespace(desktop_user='desktop', source_template=stack.SOURCE,
                            guest_template=[], skip_workspace=False, **extra)

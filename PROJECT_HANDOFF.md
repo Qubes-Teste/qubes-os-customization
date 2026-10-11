@@ -3499,3 +3499,42 @@ for this installer task. This is native transfer/plan/render validation, not
 an end-to-end installation on a second clean Qubes host. Live evidence is
 `/tmp/hud-installer-live-f9igtn3a/`. The final small foreground-command change
 was covered by the command-state tests after that transfer proof.
+
+### Short dom0 instruction pull (2026-10-11)
+
+The user pointed out that entering the long bundle-transfer command in dom0
+was impractical and requested that dom0 read the instructions from the download
+qube instead. Guest preparation now saves that unchanged command in `start.sh`
+beside its bundle, under a private `~/hud-setup-*` directory. It prints a much
+shorter native `qvm-run -pn` pull-and-run command. No clipboard transfer,
+privileged RPC permission or new package/helper service is needed.
+
+The short command uses native mktemp to create a private 0600 local file,
+then waits for the complete instruction transfer to succeed before running
+Bash on that file. Failed creation, size-limit setup or transfer stops execution.
+The transfer alone runs in a subshell with a 16-KiB file-size ceiling and a
+30-second timeout (five-second kill grace). The subsequent bundle verification
+and Salt installation do not inherit that file-size limit. Repeating preparation
+or the printed command uses fresh paths and does not overwrite existing files.
+Preparation refuses instructions exceeding the transfer limit. Source qubes
+are not automatically started or unpaused. The small dom0 instruction file
+remains in temporary storage for inspection, like the existing bundle copy.
+
+The instructions and their embedded bundle digest both come from the trusted
+download qube; this remains transfer consistency checking, not independent
+authentication or a sandbox for untrusted installation code. The README now
+documents the automatic instruction pull and this trust boundary. Existing
+Salt states, deployment order, dependency declarations and default UpdateVM
+provider are unchanged; no direct dom0 network path was added.
+
+All 21 installer tests pass, including real Bash checks for quoted paths,
+fresh private files on repeats, failed/oversized transfer refusal and lack
+of a file-size limit on the subsequent installation. A fresh native guest
+preparation and exact printed short-command execution reached the dom0
+read-only plan successfully. The received instructions and every bundled file
+matched the prepared inputs; temporary test files were removed and every VM's
+class/template/state was unchanged. Evidence is
+`/tmp/hud-installer-live-0pww4oo_/summary.json`. No Salt apply, package install,
+VM startup or GUI change was performed. The unchanged Salt trees retain the
+preceding default render/provider validation; a clean second-host installation
+remains untested.

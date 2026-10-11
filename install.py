@@ -127,6 +127,15 @@ def in_dom0():
     return values.get('ID', '').strip('"') == 'qubes'
 
 
+def instruction_command(qube, instruction):
+    """Pull trusted instructions into a private file before executing them."""
+    transfer = shlex.join(['timeout', '-k5', '30', 'qvm-run', '-pn',
+                          qube, 'cat', str(instruction)])
+    # Bound only the small instruction transfer, not the subsequent Salt run.
+    return ('(hud=$(mktemp) && (ulimit -f 16 && ' + transfer
+            + ' > "$hud") && bash "$hud")')
+
+
 def main(arguments=None):
     arguments = sys.argv[1:] if arguments is None else arguments
     executable = Path(__file__).resolve()
@@ -142,20 +151,28 @@ def main(arguments=None):
                                 *arguments], cwd=executable.parent)
     if '--help' in arguments or '-h' in arguments:
         print('Run python3 install.py in the downloaded project. It prepares a bundle and prints\n'
-              'one command to enter in dom0. Downloads stay in qubes; no RPC permissions change.\n'
+              'a short command for dom0 to pull the instructions. No RPC permissions change.\n'
               'Options forwarded to dom0: --plan, --yes, --desktop-user NAME,\n'
               '--source-template NAME, --guest-template NAME (repeatable), --skip-workspace.')
         return 0
     qube = subprocess.check_output(['/usr/bin/qubesdb-read', '/name'], text=True).strip()
-    directory = Path(tempfile.mkdtemp(prefix='qubes-hud-installer-', dir=Path.home()))
+    directory = Path(tempfile.mkdtemp(prefix='hud-setup-', dir=Path.home()))
     archive = directory / 'qubes-hud.pyz'
     digest = build_bundle(executable.parent, archive)
+    instruction = directory / 'start.sh'
+    command = bridge_command(qube, archive, digest, arguments)
+    if len(command.encode()) + 1 > 16384:
+        raise ValueError('Installer instructions exceed the transfer limit')
+    with instruction.open('x') as output:
+        output.write(command + '\n')
     print('Project prepared. Keep this qube running until dom0 has copied the bundle.\n'
           'Review/trust the downloaded project before allowing it to configure dom0.\n'
           'The SHA-256 check detects transfer changes; it is not a publisher signature.\n\n'
-          'Enter this ONE command in a dom0 terminal (not this qube):\n\n'
-          + bridge_command(qube, archive, digest, arguments)
+          'Type this shorter command in a dom0 terminal (not this qube).\n'
+          'It pulls and runs the saved instructions; no clipboard transfer is needed:\n\n'
+          + instruction_command(qube, instruction)
           + '\n\nDom0 will show the installation plan before applying it.\n'
+          f'Instructions to review in this qube: {instruction}\n'
           f'After installation you can remove this prepared bundle: {directory}')
     return 0
 

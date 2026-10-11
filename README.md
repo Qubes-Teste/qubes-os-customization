@@ -12,9 +12,22 @@ directory, and run:
 python3 install.py
 ```
 
-The script prepares the project and prints **one command to enter in a dom0
-terminal**. Keep the download qube running, copy that command to dom0, and run
-it. The installer shows its plan and asks once before applying the setup.
+The script prepares the project, saves the installation instructions as
+`start.sh`, and prints **one short command to type in a dom0 terminal**.
+Dom0 pulls those instructions from the download qube using `qvm-run`, then
+runs them. No clipboard transfer or retyping the long instructions is needed.
+Keep the download qube running. Use the exact printed command; it includes
+your qube's name and a newly generated directory. Its structure is:
+
+```sh
+(hud=$(mktemp) && (ulimit -f 16 && timeout -k5 30 qvm-run -pn QUBE cat /home/user/hud-setup-XXXXXXXX/start.sh > "$hud") && bash "$hud")
+```
+
+The instruction transfer has a 30-second timeout and a 16-KiB file limit;
+only a successful transfer is executed. The subsequent bundle transfer keeps
+its existing size/time limits and SHA-256 check. Those transfer limits do not
+restrict the installation itself. The installer shows its plan and asks once
+before applying the setup.
 Download the whole project, not just `install.py`; all Salt files, fonts,
 licences and pinned inputs are required.
 
@@ -23,8 +36,9 @@ cannot install dom0 software by itself. The command uses the
 [documented dom0-initiated file transfer](https://doc.qubes-os.org/en/latest/user/how-to-guides/how-to-copy-from-dom0.html#copying-to-dom0).
 It does not enable guest administration of dom0 or install an RPC policy.
 Review and trust this project's code and the download qube before running
-it in dom0. The printed SHA-256 checks transfer consistency; it is not an
-independent publisher signature.
+it in dom0. Both the instructions and bundle come from that qube. The saved
+instructions' SHA-256 check verifies bundle transfer consistency; it is not
+an independent publisher signature.
 
 The default installation includes:
 
