@@ -1,6 +1,6 @@
 # Qubes OS customization
 
-Portable Qubes OS 4.3 desktop customization, managed with Salt from dom0.
+Portable Qubes OS desktop customization, managed with Salt from dom0.
 
 ## Install the complete setup on another machine
 
@@ -64,14 +64,18 @@ inside the guest through that proxy. No direct Internet connection is needed
 in dom0. Internet access through the configured update qube **is** needed for
 missing templates, packages and upstream software.
 
-Requirements: a graphical Qubes **4.3 x86_64** installation with initial Qubes
+Requirements: a graphical Qubes **4.3 or newer, x86_64** installation with initial Qubes
 setup completed, a working UpdateVM/UpdatesProxy and enough storage for the
 three additional templates and Agent software. All templates being configured
 must be halted. Existing dependent AppVMs can remain running. An existing
 `hud-test` must be halted or excluded with `--skip-workspace`. Unknown qubes
 using the managed names and conflicting user configuration are refused.
-The existing audited `i3-settings-qubes` **1.14-1.fc41** requirement remains;
-newer incompatible settings need a project update, not a forced downgrade.
+System packages are not pinned to an exact release. The HUD checks the installed
+official i3 binary, required Qubes helpers and native configuration syntax.
+The console shortcut selects the installed helper's supported command syntax.
+Newer Qubes release numbers are accepted; actual incompatible tool, package or
+API changes can still require a project update. Qubes 4.3 is the tested baseline,
+not a guarantee that every future release will work without maintenance.
 Night light requires a display driver supporting the documented CTM feature.
 
 Options can be supplied when preparing the bundle or running `install.py`
@@ -114,7 +118,7 @@ settings. It deliberately keeps Xfce installed as a fallback.
 
 The formula:
 
-- refuses to run outside Qubes 4.3 dom0;
+- requires Qubes 4.3 or newer dom0;
 - installs `i3` and `i3-settings-qubes` from signed repositories;
 - keeps dom0 offline and uses Qubes' native Salt package provider and UpdateVM
   path by default;
@@ -323,7 +327,7 @@ Each active graphics output must expose XRandR's `CTM` property. The schedule
 checks once per minute, including after resume and display changes; see the
 [display-filter details](salt/qubes_gui/hud/README.md#display-wide-night-light).
 
-On another Qubes 4.3 machine, apply the base state first and then the HUD:
+On another compatible Qubes machine, apply the base state first and then the HUD:
 
 ```sh
 ./scripts/sync-salt-formula.sh

@@ -23,9 +23,9 @@
     {% endif %}
   {% endfor %}
 {% endfor %}
-{% set release = grains.get('osrelease', '')|string %}
+{% from 'qubes_gui/i3/platform.jinja' import qubes_release_supported with context %}
 {% set dom0 = grains.get('virtual') == 'Qubes' and grains.get('virtual_subtype') == 'Xen Dom0'
-    and (release == '4.3' or release.startswith('4.3.'))
+    and qubes_release_supported
     and grains.get('cpuarch', grains.get('osarch', '')) == 'x86_64' %}
 
 {% if not name %}

@@ -1,4 +1,5 @@
-{# Qubes OS 4.3 dom0 i3 state. #}
+{# Qubes dom0 i3 state. #}
+{% from 'qubes_gui/i3/platform.jinja' import qubes_release_supported with context %}
 {% set settings = salt['pillar.get']('qubes_gui:i3', {}) %}
 {% set desktop_user = settings.get('desktop_user', 'user') %}
 {% set desktop_group = settings.get('desktop_group', desktop_user) %}
@@ -12,7 +13,6 @@
 {% set managed_marker = 'Managed by qubes-os-customization Salt formula' %}
 {% set existing_config = salt['file.read'](user_config) if salt['file.file_exists'](user_config) else '' %}
 {% set config_collision = existing_config and managed_marker not in existing_config and not force_replace %}
-{% set release = grains.get('osrelease', '')|string %}
 {% set packages = [
     'i3',
     'i3-settings-qubes',
@@ -24,7 +24,7 @@
 ] %}
 {% set platform_ok = grains.get('virtual') == 'Qubes'
     and grains.get('virtual_subtype') == 'Xen Dom0'
-    and (release == '4.3' or release.startswith('4.3.')) %}
+    and qubes_release_supported %}
 
 {% if transport == 'auto' %}
   {% set direct_route = salt['cmd.run']('/usr/sbin/ip -4 route show default', python_shell=false)|trim %}
@@ -34,7 +34,7 @@
 {% if not platform_ok %}
 qubes_gui_i3_unsupported_platform:
   test.fail_without_changes:
-    - name: This formula supports only Qubes OS 4.3 dom0.
+    - name: This formula requires Qubes OS 4.3 or newer dom0.
 
 {% elif not user_info %}
 qubes_gui_i3_missing_desktop_user:

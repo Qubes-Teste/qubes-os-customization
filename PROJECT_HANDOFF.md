@@ -17,8 +17,10 @@ the end of this document.
 
 ## Goal and non-negotiable constraints
 
-This is a portable Qubes OS 4.3 desktop customization managed through Qubes
-Salt. The target is a normal Qubes machine whose dom0 has no direct Internet
+This is a portable Qubes OS desktop customization managed through Qubes
+Salt, with Qubes 4.3 as the tested baseline. Compatible newer host releases
+are admitted through a minimum-release check and native capability validation.
+The target is a normal Qubes machine whose dom0 has no direct Internet
 access. A configured networked UpdateVM and normal TemplateVM UpdatesProxy are
 allowed and expected for missing signed system packages.
 
@@ -176,11 +178,12 @@ otherwise undecorated windows do not show the titlebar.
 The HUD ships no customized compiled binary or source-build workflow. The old
 `files/i3-hud` artifact and `source/i3-hud/` tree are removed from the working
 formula; their provenance remains in Git history through `b79a78d`. Application
-requires Qubes OS 4.3 x86_64, an intact root-owned `/usr/bin/i3` matching the
-installed i3 RPM's SHA-256 file digest, and `i3-settings-qubes` exactly
-`1.14-1.fc41`. There is no i3 version pin. The settings guard remains because
-the committed config and autostart integration derive from that version.
-The installed official i3 checks candidate configuration with `i3 -C`.
+requires Qubes OS 4.3 or newer x86_64, an intact root-owned `/usr/bin/i3`
+matching the installed i3 RPM's SHA-256 file digest, and installed
+`i3-settings-qubes` terminal/status helpers. Neither package has an exact
+version gate. The installed official i3 checks candidate configuration with
+`i3 -C`; every apply also rechecks the resulting config before enabling the
+session. The console shortcut follows the installed helper's CLI capabilities.
 
 The legacy `/usr/local/libexec/qubes-hud/i3` pathname is maintained as a small,
 hash-pinned shell launcher containing `exec /usr/bin/i3 "$@"`. This lets a
@@ -331,13 +334,15 @@ check verifies those libraries and required symbols without opening X11.
 
 ## Portability limits and machine-local policy
 
-The project supports Qubes OS 4.3 x86_64. The base i3 state requests current
+The project's tested baseline is Qubes OS 4.3 x86_64; newer numeric host
+releases are admitted without an upper version bound. The base i3 state requests current
 packages from the configured official repositories, and the HUD validates the
 installed i3 executable against its own RPM metadata without a version pin.
-The `i3-settings-qubes` version guard remains as described above: a future
-settings package update can require auditing the committed config/autostart
-integration before a fresh HUD apply will proceed. No custom binary rebuild
-is needed on the target or on a maintainer machine.
+The former exact `i3-settings-qubes` guard is removed. Required executable
+helpers and native configuration checks replace it. The committed config and
+autostart integration still need maintenance when actual upstream interfaces
+change; permitting a release number is not certification of an untested OS.
+No custom binary rebuild is needed on the target or on a maintainer machine.
 
 The cyan theme is deterministic for a particular installed Breeze source
 tree, but the Breeze package itself is supplied by each distribution and is
@@ -531,9 +536,9 @@ No custom Qt/GTK library or theme-plugin binary is supplied by this project.
 There is still maintained custom code: the Picom GLSL shader, Python managers,
 keyboard helper, session environment hooks, and Qubes-derived autostart script.
 The copied i3 config/autostart do not automatically inherit upstream fixes.
-The exact i3-settings-qubes1.14-1.fc41 guard refuses a new HUD apply after a
-settings-package update until reviewed; it does not block the package manager
-from installing updates. Treat reviewing those copied scripts/configuration
+The historical exact i3-settings-qubes1.14-1.fc41 guard described in this
+September audit was retired on October 11 in favor of capability checks.
+Treat reviewing those copied scripts/configuration
 as a continuing maintenance obligation, even though the i3 executable itself
 uses normal package updates.
 
@@ -3589,3 +3594,71 @@ source build or guest change. These checks establish fresh-directory handling
 and repeat synchronization, not a completed installation on another clean
 Qubes host. Download the updated project and prepare a new bundle to retry;
 previously prepared instruction/bundle files retain the old sync script.
+
+### Package and host release compatibility (2026-10-11)
+
+The second-machine HUD preview reached an obsolete exact
+`i3-settings-qubes == 1.14-1.fc41` refusal with the official 1.17-1.fc41
+package installed. That guard was a project restriction, not proof of an
+incompatible package. Official Qubes source tags v1.14-1 and v1.17-1 have
+byte-identical keycode configuration and XDG autostart scripts. Source was
+retrieved through already-running sys-net, with no direct dom0 network request;
+comparison evidence is `/tmp/hud-i3settings-upstream-comparison.json`.
+
+HUD now checks that i3-settings-qubes and its terminal/status executables are
+present instead of comparing an exact package version-release. The installed
+i3 binary must still match its root-owned RPM digest. Candidate configuration
+still passes native i3 -C before replacement. A separate native syntax-check
+state also checks unchanged configuration after package updates, and session
+activation requires that check to pass. No package hold or downgrade is used.
+
+The 1.17 terminal helper deprecates positional console in favor of --console.
+Salt probes its harmless --help interface with a five-second limit and accepts
+help on stdout or stderr (1.17 uses stderr). A Jinja context renders the
+appropriate argument into the existing i3 config; no runtime wrapper is added.
+The exact 1.14 helper rejects --help before X11 access, so it keeps positional
+console. Native source probes and both i3 parser variants pass. The existing
+RAM status filter also preserves 1.17's combined protocol-header line and
+still inserts after the disk block. Evidence:
+`/tmp/hud-i3settings-cli-proof-sfl1tbhh/summary.json` and
+`/tmp/hud-i3-native-config-tuaisa59/summary.json`.
+
+All dom0 release gates now share `qubes_gui/i3/platform.jinja`: numeric Qubes
+releases at least 4.3 are admitted, with no upper bound. Installer preflight
+uses the same numeric comparison. This covers main and rollback states,
+shared fonts, optional workspace provisioning and template-family creation;
+the family's old exact 4.3 comparison no longer rejects 4.3.1. Dom0 identity,
+architecture, native tools and all ownership/collision checks remain in place.
+The shared Jinja source is a required sync and installer-bundle input.
+
+This removes artificial host/package release ceilings; it does not certify
+unknown future desktop APIs, hardware or package layouts. HUD's config and
+autostart derivatives remain project-maintained. The Debian 13 guest family
+is still an explicit distribution recipe, independent of the host release;
+guest discovery and upstream locked builds are unchanged. Font/vendor hashes,
+legacy migration fingerprints and installed-package reconciliation checks are
+integrity/provenance mechanisms and remain intact. No dependency, downloaded
+deployment input, custom binary or runtime helper was added.
+
+Validation: all 131 repository tests pass, including seven HUD compatibility
+tests and 24 installer tests. The console tests additionally cover help on
+stderr and unsuccessful help probes. Native isolated Salt renders and low-state
+compilation pass all nine affected dom0 entrypoints with fresh project paths,
+both on the current release and with a simulated 5.0 release grain. These are
+capability/render tests on installed Qubes 4.3 tooling, not future-OS testing.
+Package install, refresh and removal still resolve to qubes_dom0_update.
+Evidence: `/tmp/hud-compatibility-native-9q_znzbk/summary.json` and
+`/tmp/hud-compatibility-future-native-_j0xrgrl/summary.json`.
+
+Native Salt execution against private temporary configs confirms that a valid
+unchanged config skips the command and permits its dependent session file;
+an invalid config fails and blocks that file. Evidence:
+`/tmp/hud-compatibility-native-check-6kti2_3f/summary.json`. A real bundle
+build/extraction includes the shared Jinja file byte-for-byte, and executing
+that archive with `--plan --skip-workspace` completes the native read-only
+preflight. All deployment entrypoints were audited: no new network operation
+or dependency, and guest downloads remain in guests. No live Salt sync/apply,
+package installation, VM state change or desktop change was performed. A full
+clean-host install remains unverified; retry from a freshly downloaded project
+and newly prepared bundle because earlier bundles retain the exact-version
+guard.

@@ -381,17 +381,28 @@ physical light spectrum or promise a medical effect.
 
 Application is refused unless all of these checks pass:
 
-- Qubes OS 4.3 dom0 on `x86_64`
+- Qubes OS 4.3 or newer dom0 on `x86_64`
 - the official Qubes `i3` package is installed (4.23 or newer for the workspace
   protocol), and `/usr/bin/i3` matches its
   installed RPM's file digest
-- `i3-settings-qubes` version-release exactly `1.14-1.fc41`
+- `i3-settings-qubes` installed, with executable `qubes-i3-sensible-terminal`
+  and `qubes-i3status` helpers; no exact version-release requirement
 
 The base state obtains i3 through Qubes' UpdateVM-backed package provider.
 The HUD ships no compiled window manager and has no custom i3 build/version
 pin. It validates the candidate config with `/usr/bin/i3 -C` before replacing
-the user config. The settings package guard remains because the committed
-configuration and autostart helper derive from that exact Qubes integration.
+the user config and repeats the check before enabling the session, including
+when the saved config is unchanged after a package update. A bounded native
+`--help` probe selects `--console` for newer terminal helpers and positional
+`console` for the older interface. This is rendered into the i3 config by Salt;
+no extra runtime wrapper is installed.
+
+The config/autostart source comments record their original provenance, not a
+required installed version. Official tags `v1.14-1` and `v1.17-1` have identical
+keycode and autostart sources. Those HUD derivatives remain project-maintained;
+they do not automatically incorporate future upstream source edits. Newer
+Qubes release numbers are permitted, while real tool/API incompatibilities
+can still require maintenance. The tested platform baseline remains Qubes 4.3.
 
 VTE and GTK/Pango are already dependencies of the stock Xfce desktop terminal.
 Rsyslog is selected by the supported Qubes 4.3 desktop's standard package group;

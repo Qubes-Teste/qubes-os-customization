@@ -1,6 +1,8 @@
 # Debian template family
 
-This opt-in formula creates Debian 13 x86_64 TemplateVMs on Qubes 4.3. It uses
+This opt-in formula creates Debian 13 x86_64 TemplateVMs on compatible Qubes
+4.3 or newer hosts. Debian 13 is the guest recipe, independently of the host
+release; a host update does not automatically migrate guest distributions. It uses
 native Qubes cloning, Salt includes and signed Debian packages through the
 normal TemplateVM UpdatesProxy. Agent also uses Microsoft's signed APT
 repository for VS Code and pinned upstream sources for its agent tools;

@@ -382,6 +382,33 @@ class NativePlanChecks(unittest.TestCase):
                                         check=True)
 
 
+class NativePlatformChecks(unittest.TestCase):
+    def platform(self, version, *, distribution='qubes', architecture='x86_64', missing=None):
+        release = 'ID="' + distribution + '"\nVERSION_ID="' + version + '"\n'
+        with mock.patch.object(stack.Path, 'read_text', return_value=release), \
+                mock.patch.object(stack.platform, 'machine', return_value=architecture), \
+                mock.patch.object(stack.os, 'access', side_effect=lambda path, mode: path != missing):
+            return stack.check_platform()
+
+    def test_future_qubes_releases_are_admitted_without_an_exact_version_gate(self):
+        for version in ('4.3', '4.3.1', '4.4', '4.10', '5.0'):
+            with self.subTest(version=version):
+                self.platform(version)
+
+    def test_older_malformed_and_non_dom0_platforms_are_refused(self):
+        for version in ('', '4', '4.2', '4.2.99', '3.99', '4.3rc1', '4.3.', '4..3', '4.3.x'):
+            with self.subTest(version=version), self.assertRaises(ValueError):
+                self.platform(version)
+        for other in ({'distribution': 'fedora'}, {'architecture': 'aarch64'}):
+            with self.subTest(other=other), self.assertRaises(ValueError):
+                self.platform('4.3', **other)
+
+    def test_newer_release_still_requires_native_qubes_tools(self):
+        for tool in stack.TOOLS:
+            with self.subTest(tool=tool), self.assertRaisesRegex(ValueError, 'missing: ' + tool):
+                self.platform('5.0', missing='/usr/bin/' + tool)
+
+
 class NativePreflightChecks(unittest.TestCase):
     def inspect(self, vms, *, saved=None, tags=None, args=None):
         def read(*command):

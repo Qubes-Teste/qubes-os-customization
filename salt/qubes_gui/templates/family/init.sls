@@ -1,9 +1,10 @@
 {# qubesctl creates dom0 targets before resolving its guest target list. #}
+{% from 'qubes_gui/i3/platform.jinja' import qubes_release_supported with context %}
 {% from 'qubes_gui/templates/family/map.jinja' import family with context %}
 {% set dom0 = grains.get('virtual') == 'Qubes'
     and grains.get('virtual_subtype') == 'Xen Dom0' %}
 {% set supported_dom0 = dom0 and grains.get('kernel') == 'Linux'
-    and grains.get('osrelease')|string == '4.3'
+    and qubes_release_supported
     and grains.get('cpuarch') == 'x86_64' %}
 
 {% if not family.valid %}
@@ -138,7 +139,7 @@ include:
 qubes_gui_template_family_guest_refused:
   test.fail_without_changes:
     - name: >-
-        This family supports Qubes 4.3 dom0 and its owned Debian 13 x86_64
+        This family requires Qubes 4.3 or newer dom0 and its owned Debian 13 x86_64
         TemplateVMs only. Guest name, role, source and family ownership must
         match dom0's native Qubes pillar and the configured family names.
 {% endif %}

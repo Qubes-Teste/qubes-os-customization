@@ -50,11 +50,12 @@ def valid_name(name):
 
 def check_platform():
     release = Path("/etc/os-release").read_text()
+    version = re.search(r'^VERSION_ID=[\"\']?([0-9]+(?:\.[0-9]+)+)[\"\']?$',
+                        release, re.M)
     if (not re.search(r'^ID=[\"\']?qubes[\"\']?$', release, re.M)
-            or not re.search(r'^VERSION_ID=[\"\']?4\.3(?:\.\d+)*[\"\']?$',
-                             release, re.M)
+            or not version or tuple(map(int, version[1].split('.')[:2])) < (4, 3)
             or platform.machine() != "x86_64"):
-        raise ValueError("This installer requires Qubes OS 4.3 x86_64 dom0.")
+        raise ValueError("This installer requires Qubes OS 4.3 or newer x86_64 dom0.")
     for tool in TOOLS:
         if not os.access("/usr/bin/" + tool, os.X_OK):
             raise ValueError("Required stock Qubes tool is missing: " + tool)

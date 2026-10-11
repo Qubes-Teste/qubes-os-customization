@@ -12,6 +12,7 @@ manifest_path="$target_root/.qubes-gui-sync-manifest-v1"
 formulas=(i3 hud guest_hud templates)
 required_entries=(
     i3/init.sls
+    i3/platform.jinja
     i3/rollback.sls
     hud/init.sls
     hud/rollback.sls

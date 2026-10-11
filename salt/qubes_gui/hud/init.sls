@@ -1,4 +1,5 @@
-{# Qubes OS 4.3 dom0 HUD session. No running desktop process is restarted. #}
+{# Qubes dom0 HUD session. No running desktop process is restarted. #}
+{% from 'qubes_gui/i3/platform.jinja' import qubes_release_supported with context %}
 {% set settings = salt['pillar.get']('qubes_gui:hud', {}) %}
 {% set desktop_user = settings.get('desktop_user', 'user') %}
 {% set desktop_group = settings.get('desktop_group', desktop_user) %}
@@ -11,17 +12,28 @@
 {% set hud_asset_marker = 'Qubes HUD managed file. Owner: salt/qubes_gui/hud.' %}
 {% set legacy_i3_sha256 = 'fbd035f0e776acf755cffb021e8ef922b1da005ce4c54b3e54f3af545daf1f8f' %}
 {% set i3_compat_sha256 = '5894d81ca085866185170577ec4a957e8094c60cca5f986d532399f15dac8402' %}
-{% set expected_i3_settings_evr = '1.14-1.fc41' %}
-{% set release = grains.get('osrelease', '')|string %}
 {% set architecture = grains.get('cpuarch', grains.get('osarch', ''))|string %}
 {% set platform_ok = grains.get('virtual') == 'Qubes'
     and grains.get('virtual_subtype') == 'Xen Dom0'
-    and (release == '4.3' or release.startswith('4.3.'))
+    and qubes_release_supported
     and architecture == 'x86_64' %}
-{% set installed_i3_settings_evr = salt['cmd.run'](
-    "/usr/bin/rpm -q --qf '%{VERSION}-%{RELEASE}' i3-settings-qubes",
-    python_shell=false,
-    ignore_retcode=true)|trim %}
+{% set i3_settings_installed = salt['cmd.retcode'](
+    '/usr/bin/rpm --quiet -q i3-settings-qubes',
+    python_shell=false, ignore_retcode=true) == 0 %}
+{% set missing_i3_helpers = [] %}
+{% for helper in ['/usr/bin/qubes-i3-sensible-terminal', '/usr/bin/qubes-i3status'] %}
+  {% if salt['cmd.retcode'](['/usr/bin/test', '-x', helper],
+      python_shell=false, ignore_retcode=true) != 0 %}
+    {% set _ = missing_i3_helpers.append(helper) %}
+  {% endif %}
+{% endfor %}
+{# New Qubes helpers expose --console; older ones reject --help before touching
+   X11 and use positional console. Detect the interface, not a package EVR. #}
+{% set terminal_help = salt['cmd.run_all'](
+    ['/usr/bin/qubes-i3-sensible-terminal', '--help'], python_shell=false,
+    ignore_retcode=true, timeout=5) if i3_settings_installed and not missing_i3_helpers else {} %}
+{% set console_argument = '--console' if terminal_help.get('retcode') == 0
+    and '--console' in (terminal_help.get('stdout', '') ~ terminal_help.get('stderr', '')) else 'console' %}
 {% set runtime_packages = ['rofi', 'feh', 'picom', 'breeze-icon-theme'] %}
 
 {# The base formula supplies i3. Match /usr/bin/i3 to the installed RPM's
@@ -512,7 +524,7 @@
 {% if not platform_ok %}
 qubes_gui_hud_unsupported_platform:
   test.fail_without_changes:
-    - name: This formula supports only Qubes OS 4.3 dom0 on x86_64.
+    - name: This formula requires Qubes OS 4.3 or newer dom0 on x86_64 and compatible desktop tools.
 
 {% elif not user_info %}
 qubes_gui_hud_missing_desktop_user:
@@ -531,13 +543,13 @@ qubes_gui_hud_official_i3_required:
         Refusing to activate the HUD session without an intact, root-owned
         /usr/bin/i3 matching the installed i3 RPM. Apply qubes_gui.i3 first.
 
-{% elif installed_i3_settings_evr != expected_i3_settings_evr %}
-qubes_gui_hud_unsupported_i3_settings_build:
+{% elif not i3_settings_installed or missing_i3_helpers %}
+qubes_gui_hud_missing_i3_integration:
   test.fail_without_changes:
     - name: >-
-        Refusing to install the HUD config: installed i3-settings-qubes is
-        '{{ installed_i3_settings_evr }}', expected exactly
-        '{{ expected_i3_settings_evr }}'.
+        Install i3-settings-qubes with executable qubes-i3-sensible-terminal
+        and qubes-i3status helpers. Missing helpers: {{ missing_i3_helpers|join(', ') }}.
+        Apply qubes_gui.i3 first. No exact package version is required.
 
 {% elif unmanaged_collision %}
 qubes_gui_hud_unmanaged_target_refused:
@@ -1165,6 +1177,9 @@ qubes_gui_hud_i3_config:
   file.managed:
     - name: {{ user_i3_config }}
     - source: salt://qubes_gui/hud/files/i3-config
+    - template: jinja
+    - context:
+        console_argument: {{ console_argument }}
     - check_cmd: /usr/bin/i3 -C -c
     - user: {{ desktop_user }}
     - group: {{ desktop_group }}
@@ -1176,6 +1191,15 @@ qubes_gui_hud_i3_config:
       - file: qubes_gui_hud_autostart_helper
       - file: qubes_gui_hud_status_helper
       - cmd: qubes_gui_hud_official_i3_binary_present
+
+{# Recheck after package updates even if file.managed finds unchanged bytes. #}
+{% set i3_config_check = "/usr/bin/i3 -C -c '" ~ user_i3_config|replace("'", "'\"'\"'") ~ "'" %}
+qubes_gui_hud_i3_config_compatible:
+  cmd.run:
+    - name: {{ i3_config_check|yaml_dquote }}
+    - unless: {{ i3_config_check|yaml_dquote }}
+    - require:
+      - file: qubes_gui_hud_i3_config
 
 qubes_gui_hud_rofi_theme:
   file.managed:
@@ -1327,6 +1351,7 @@ qubes_gui_hud_xsession:
       - sls: qubes_gui.hud.font
       - cmd: qubes_gui_hud_official_i3_binary_present
       - file: qubes_gui_hud_i3_config
+      - cmd: qubes_gui_hud_i3_config_compatible
       - file: qubes_gui_hud_rofi_theme
       - file: qubes_gui_hud_dunst_config
       - file: qubes_gui_hud_xfce_terminal

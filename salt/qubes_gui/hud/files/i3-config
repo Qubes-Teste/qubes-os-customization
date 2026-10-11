@@ -22,7 +22,7 @@ set $audio_mute pactl set-sink-mute @DEFAULT_SINK@ toggle
 set $audio_mic_mute pactl set-source-mute @DEFAULT_SOURCE@ toggle
 
 set $terminal qubes-i3-sensible-terminal
-set $console qubes-i3-sensible-terminal console
+set $console qubes-i3-sensible-terminal {{ console_argument }}
 set $dom0_terminal /usr/bin/xfce4-terminal
 
 set $desktop_autostart /usr/local/libexec/qubes-hud/hud-xdg-autostart

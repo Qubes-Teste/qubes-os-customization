@@ -21,7 +21,7 @@ ROOT_FILES = {'__main__.py', 'README.md', 'AGENTS.md', 'PROJECT_HANDOFF.md',
               'scripts/sync-salt-formula.sh', 'scripts/install-stack.py',
               'salt/pillar.example.sls'}
 REQUIRED_FILES = ROOT_FILES | {'salt/qubes_gui/' + name for name in (
-    'i3/init.sls', 'hud/init.sls', 'hud/qube.sls', 'hud/font.sls',
+    'i3/init.sls', 'i3/platform.jinja', 'hud/init.sls', 'hud/qube.sls', 'hud/font.sls',
     'guest_hud/init.sls', 'guest_hud/firefox.sls', 'templates/family/init.sls')}
 
 

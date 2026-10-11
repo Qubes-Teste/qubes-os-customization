@@ -1,16 +1,16 @@
 {# Select Xfce for the next LightDM login without removing i3 or user files. #}
+{% from 'qubes_gui/i3/platform.jinja' import qubes_release_supported with context %}
 {% set settings = salt['pillar.get']('qubes_gui:i3', {}) %}
 {% set desktop_user = settings.get('desktop_user', 'user') %}
 {% set user_info = salt['user.info'](desktop_user) %}
-{% set release = grains.get('osrelease', '')|string %}
 {% set platform_ok = grains.get('virtual') == 'Qubes'
     and grains.get('virtual_subtype') == 'Xen Dom0'
-    and (release == '4.3' or release.startswith('4.3.')) %}
+    and qubes_release_supported %}
 
 {% if not platform_ok %}
 qubes_gui_i3_rollback_unsupported_platform:
   test.fail_without_changes:
-    - name: This rollback supports only Qubes OS 4.3 dom0.
+    - name: This rollback requires Qubes OS 4.3 or newer dom0.
 {% elif not user_info %}
 qubes_gui_i3_rollback_missing_user:
   test.fail_without_changes:

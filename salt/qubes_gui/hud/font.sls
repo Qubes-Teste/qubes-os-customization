@@ -113,10 +113,10 @@ qubes_gui_hud_font_choice_retired:
   test.fail_without_changes:
     - name: HUD fonts are now Zen Dots and White Rabbit. Remove obsolete trial family settings.
 {% else %}
-{% set release = grains.get('osrelease', '')|string %}
+{% from 'qubes_gui/i3/platform.jinja' import qubes_release_supported with context %}
 {% set dom0 = grains.get('virtual') == 'Qubes'
     and grains.get('virtual_subtype') == 'Xen Dom0'
-    and (release == '4.3' or release.startswith('4.3.')) %}
+    and qubes_release_supported %}
 {% set qubesdb = '/usr/bin/qubesdb-read' %}
 {% set has_qubesdb = not dom0 and salt['file.file_exists'](qubesdb) %}
 {% set vm_type = salt['cmd.run'](qubesdb ~ ' /qubes-vm-type',
@@ -132,7 +132,7 @@ qubes_gui_hud_font_choice_retired:
 {% if grains.get('kernel') != 'Linux' or not ((dom0 and not preview_qube) or guest) %}
 qubes_gui_hud_font_target_refused:
   test.fail_without_changes:
-    - name: Select Qubes 4.3 dom0, a supported TemplateVM, or an explicitly named AppVM preview.
+    - name: Select Qubes 4.3 or newer dom0, a supported TemplateVM, or an explicitly named AppVM preview.
 {% else %}
 {# Native lstat st_mode includes type and special bits: directory 0755=16877,
    directory 0555=16749, regular file 0644=33188. Exact equality also rejects

@@ -1,0 +1,13 @@
+{# Release baseline only. Callers also verify dom0 identity and capabilities.
+   Newer Qubes releases are not rejected just because their number changed. #}
+{% set qubes_release_parts = (grains.get('osrelease', '')|string).split('.') %}
+{% set qubes_release_valid = namespace(value=qubes_release_parts|length >= 2) %}
+{% for part in qubes_release_parts %}
+  {% if not part %}{% set qubes_release_valid.value = false %}{% endif %}
+  {% for character in part %}
+    {% if character not in '0123456789' %}{% set qubes_release_valid.value = false %}{% endif %}
+  {% endfor %}
+{% endfor %}
+{% set qubes_release_supported = qubes_release_valid.value
+    and (qubes_release_parts[0]|int > 4
+         or (qubes_release_parts[0]|int == 4 and qubes_release_parts[1]|int >= 3)) %}
